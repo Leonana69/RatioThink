@@ -374,15 +374,34 @@ async fn drive(
                             return;
                         }
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
-                            // TODO(kv-residency): as in chat.rs — `reused_tokens`
-                            // cannot distinguish a resident boundary from an
-                            // evicted one that replayed. A tree search forks
-                            // 15-21 contexts, so this is the route where the
-                            // distinction matters most and is least visible.
+                            // Untyped by necessity: this route serves BOTH
+                            // `tot_core::TreeResult` and
+                            // `bestofn_core::RoundResult`, and neither can be
+                            // imported here — both pull in the wasm-only
+                            // `inferlet` SDK. Contrast chat.rs, which decodes
+                            // the shared `ratio_wire::GenResult` and IS
+                            // compiler-checked end to end.
+                            //
+                            // So these key names are a contract nothing enforces
+                            // statically. A rename on the guest side compiles
+                            // clean here and silently reads the fallback. What
+                            // catches it today is the crossmode/bon gates: a
+                            // wrong key logs -1/false and their assertions fail.
+                            // Closing this properly means hoisting these fields
+                            // into a `#[serde(flatten)]` struct in `ratio-wire`
+                            // so all three results share one definition.
+                            //
+                            // `reused_tokens` is NAME-level. `replayed_pages` is
+                            // the engine's own account and is what falsifies it;
+                            // -1 means the engine reported nothing, so a missing
+                            // value never reads as a confirmed zero.
                             tracing::info!(
                                 %route,
                                 boundary_found = v.get("boundary_found").and_then(|b| b.as_bool()).unwrap_or(false),
                                 reused_tokens = v.get("reused_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
+                                resident_pages = v.get("resident_pages").and_then(|t| t.as_i64()).unwrap_or(-1),
+                                replayed_pages = v.get("replayed_pages").and_then(|t| t.as_i64()).unwrap_or(-1),
+                                rs_replayed = v.get("rs_replayed").and_then(|b| b.as_bool()).unwrap_or(false),
                                 model = v.get("model").and_then(|m| m.as_str()).unwrap_or(""),
                                 synthesized = v.get("synthesized").and_then(|s| s.as_bool()).unwrap_or(false),
                                 // Best-of-N resume diagnostics. A think-more

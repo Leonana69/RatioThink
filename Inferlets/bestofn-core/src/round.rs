@@ -38,10 +38,17 @@ pub struct RoundResult {
     pub pickable: usize,
     /// KV reuse on ENTRY — round 1 only. Without this a Best-of-N path that
     /// cold-starts every turn is indistinguishable from one that reuses.
+    /// `reused_tokens` is NAME-level; `replayed_pages` is what falsifies it.
     #[serde(default)]
     pub boundary_found: bool,
     #[serde(default)]
     pub reused_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resident_pages: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replayed_pages: Option<u32>,
+    #[serde(default)]
+    pub rs_replayed: bool,
     /// Resume diagnostics — absent on round 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume: Option<ResumeInfo>,

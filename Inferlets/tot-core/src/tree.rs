@@ -120,10 +120,18 @@ pub struct TreeResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_metrics: Option<GenerationMetrics>,
     /// KV reuse diagnostics for THIS ToT turn (see the struct docs).
+    /// `reused_tokens` is NAME-level; read it against `replayed_pages`, which
+    /// is the engine's own account of how much it had to regenerate.
     #[serde(default)]
     pub boundary_found: bool,
     #[serde(default)]
     pub reused_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resident_pages: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replayed_pages: Option<u32>,
+    #[serde(default)]
+    pub rs_replayed: bool,
 }
 
 /// Total generated-token throughput for one completed tree-of-thought run.

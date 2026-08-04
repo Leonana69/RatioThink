@@ -319,16 +319,19 @@ async fn buffered_response(
             Ok(ProcessEvent::Return(r)) => {
                 result = serde_json::from_str::<GenResult>(&r).ok();
                 if let Some(g) = &result {
-                    // TODO(kv-residency): `reused_tokens` is NAME-level, not
-                    // residency-level — an evicted boundary opens successfully
-                    // and silently replays, logging identically to a real hit.
-                    // See `gen_core::boundary::OpenOutcome`. Anyone reading this
-                    // line as evidence the cache is healthy is reading more into
-                    // it than it says.
+                    // `boundary_found` + `reused_tokens` are NAME-level: an
+                    // evicted boundary opens successfully and replays. Read them
+                    // against `replayed_pages`, which is the engine's own
+                    // account — non-zero means this "reuse" paid a full prefill.
+                    // `-1` renders as "engine reported nothing" so a missing
+                    // value never reads as a confirmed zero.
                     tracing::info!(
                         boundary_found = g.boundary_found,
                         reused_tokens = g.reused_tokens,
                         prompt_tokens = g.prompt_tokens,
+                        resident_pages = g.resident_pages.map(i64::from).unwrap_or(-1),
+                        replayed_pages = g.replayed_pages.map(i64::from).unwrap_or(-1),
+                        rs_replayed = g.rs_replayed,
                         "kv reuse"
                     );
                 }

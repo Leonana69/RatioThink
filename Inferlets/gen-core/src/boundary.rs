@@ -71,31 +71,21 @@ impl Default for BoundaryDirective {
 
 /// What actually happened, for diagnostics and tests.
 ///
-/// `found` alone is NOT a hit signal. Scheduler eviction calls `suspend`
-/// (`runtime/context/sched.rs:790-815`) and leaves the name in place, so an
-/// evicted boundary **opens successfully and replays the whole prefix**.
+/// `found` alone is NOT a hit signal. Scheduler eviction calls `suspend` and
+/// leaves the name in place, so an evicted boundary **opens successfully and
+/// replays the whole prefix** — logging identically to a real hit.
 ///
-/// TODO(kv-residency): every field here is NAME-level, not residency-level.
-/// `reused_tokens = 800` means a boundary with that name covered 800 tokens; it
-/// does NOT mean those tokens were on the GPU. Under memory pressure the same
-/// run re-prefills everything and these numbers are identical — so every reuse
-/// claim in this branch, including the milestone gates, is unfalsifiable in
-/// exactly the regime where it is most likely to be wrong. A ToT search forks
-/// 15-21 contexts, which is what triggers eviction in the first place.
+/// `reused_tokens` and friends are therefore NAME-level: `reused_tokens = 800`
+/// means a boundary with that name covered 800 tokens, not that those tokens
+/// were resident. The residency fields below are what make the difference
+/// observable, and they come from the engine rather than being inferred:
+/// `Context::open_with_report` returns pie's own accounting of how much of the
+/// prefix it reused versus regenerated.
 ///
-/// The real fix is pie-side and deliberately NOT taken: `Context::open` returns
-/// `Result<Self>` (`sdk/rust/inferlet/src/context.rs:112`), which has no third
-/// state for "found, but I rebuilt it". It would need either an additive
-/// `open-with-report -> (context, report)` or a `snapshot-status(name)` query —
-/// the latter is cheaper and non-breaking but races, since status can change
-/// between the query and the open.
-///
-/// Without touching pie, the honest approximation is to measure what residency
-/// BUYS rather than ask for the state: time the flush in `open_canonical` (see
-/// the note there) and read it against `reused_tokens`. Large `reused_tokens`
-/// with a near-zero flush is a real hit; a flush that scales with it is a
-/// replay wearing a hit's clothes. That is a timing heuristic, not ground
-/// truth, and it needs a prefix of real size to separate.
+/// Read them together. `reused_tokens` large with `replayed_pages == Some(0)`
+/// is a genuine hit. The same `reused_tokens` with a non-zero `replayed_pages`
+/// is a replay wearing a hit's clothes — the tokens were re-prefilled and the
+/// only thing reused was the name.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OpenOutcome {
     pub found: bool,
@@ -105,11 +95,42 @@ pub struct OpenOutcome {
     pub appended_tokens: usize,
     /// True when the exact boundary was used rather than a ladder rung.
     pub exact: bool,
+    /// Committed pages the engine reported as already resident, reused as-is.
+    ///
+    /// `None` when nothing was opened (a cold start), so "no data" stays
+    /// distinguishable from "reported zero".
+    pub resident_pages: Option<u32>,
+    /// Committed pages the engine had to REGENERATE by replay forward passes.
+    ///
+    /// This is the field that falsifies a reuse claim: non-zero means the open
+    /// paid a prefill that `reused_tokens` alone would have hidden.
+    pub replayed_pages: Option<u32>,
+    /// Recurrent state was replayed. Tracked on a path independent of KV pages,
+    /// so this can be true while `replayed_pages` is `Some(0)` — which is the
+    /// normal shape for a hybrid/linear-attention model.
+    pub rs_replayed: bool,
 }
 
 impl OpenOutcome {
     pub fn cold(total: usize) -> Self {
-        Self { found: false, reused_tokens: 0, appended_tokens: total, exact: false }
+        Self {
+            found: false,
+            reused_tokens: 0,
+            appended_tokens: total,
+            exact: false,
+            resident_pages: None,
+            replayed_pages: None,
+            rs_replayed: false,
+        }
+    }
+
+    /// True only when the engine confirmed the reused prefix was resident.
+    ///
+    /// A `found` boundary with `replayed_pages > 0` is NOT a hit: the name
+    /// resolved, but the KV behind it was rebuilt. Returns `false` when the
+    /// engine reported nothing, so an unknown never reads as a success.
+    pub fn is_resident_hit(&self) -> bool {
+        self.found && matches!(self.replayed_pages, Some(0)) && !self.rs_replayed
     }
 }
 
@@ -169,12 +190,11 @@ fn ladder(
 /// `save_boundary`'s own flush degrades to a no-op. Token sequences — and so
 /// the digest — are unchanged either way; only the work is.
 ///
-/// TODO(kv-residency): this flush is the one place a replay is observable
-/// without changing pie. On a genuinely resident boundary it materializes only
-/// the appended suffix — near-zero, and flat as the conversation grows. On an
-/// evicted one it runs a forward pass over the whole reused prefix. Timing it
-/// and reporting `boundary_ms` alongside `reused_tokens` would make the
-/// difference visible; nothing does that today.
+/// Opens via `open_with_report` rather than `open`, so the returned
+/// [`OpenOutcome`] carries the engine's own account of how much of the prefix
+/// was resident versus replayed. Eviction suspends rather than deletes, so a
+/// plain `open` succeeds on an evicted boundary and silently re-prefills it;
+/// the report is the only way to tell that from a hit.
 pub async fn open_canonical(
     model: &Model,
     model_id: &str,
@@ -186,7 +206,10 @@ pub async fn open_canonical(
 
     if directive.enabled && !directive.key.is_empty() {
         for (prefix, name) in ladder(model, directive, model_id, messages) {
-            let Ok(mut ctx) = Context::open(model, name.as_str()) else {
+            // `open_with_report`, not `open`: the report is the only way to
+            // learn whether this boundary was actually resident or was found by
+            // name and silently rebuilt.
+            let Ok((mut ctx, report)) = Context::open_with_report(model, name.as_str()) else {
                 continue;
             };
             // THE CHECK the reference omits. A length-only comparison would
@@ -215,6 +238,9 @@ pub async fn open_canonical(
                     reused_tokens: prefix.len(),
                     appended_tokens: suffix.len(),
                     exact: prefix.len() == canonical.len(),
+                    resident_pages: Some(report.resident_prefix_pages),
+                    replayed_pages: Some(report.replayed_pages),
+                    rs_replayed: report.rs_replayed,
                 },
                 tokens: canonical,
                 prompt_saved,
