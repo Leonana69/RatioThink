@@ -1,7 +1,12 @@
 [submodule "Vendor/pie"]
 	path = Vendor/pie
-	url = https://github.com/pie-project/pie.git
-	branch = pie.app/v1-base-shmem
+	# TEMPORARY: pointed at a personal fork while the upstream PRs are in review.
+	# Revert to url = https://github.com/pie-project/pie.git and
+	# branch = pie.app/v1-base-shmem once the kv-residency work lands upstream.
+	# check-vendor-pie-pin.sh validates the gitlink against THIS url/branch, so
+	# it passes against the fork and will re-validate against upstream on revert.
+	url = https://github.com/Leonana69/pie.git
+	branch = feat/kv-residency-shmem
 [submodule "Scripts/vendor/ds_store"]
 	path = Scripts/vendor/ds_store
 	url = https://github.com/dmgbuild/ds_store.git
