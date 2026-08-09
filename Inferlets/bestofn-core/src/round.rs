@@ -18,7 +18,7 @@ use gen_core::{GenError, classify_engine_error};
 use inferlet::{Context, model::Model};
 use ratio_names::{Collision, SnapshotName, collision_for};
 use ratio_wire::event::Pick;
-use ratio_wire::{Event, EventSink};
+use ratio_wire::{Event, EventSink, KvDiagnostics};
 use serde::{Deserialize, Serialize};
 use tot_core::search::{DemuxKind, generate_branch};
 use tot_core::stream;
@@ -38,17 +38,11 @@ pub struct RoundResult {
     pub pickable: usize,
     /// KV reuse on ENTRY — round 1 only. Without this a Best-of-N path that
     /// cold-starts every turn is indistinguishable from one that reuses.
-    /// `reused_tokens` is NAME-level; `replayed_pages` is what falsifies it.
-    #[serde(default)]
-    pub boundary_found: bool,
-    #[serde(default)]
-    pub reused_tokens: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resident_pages: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replayed_pages: Option<u32>,
-    #[serde(default)]
-    pub rs_replayed: bool,
+    /// Flattened, so the fields stay at the top level of the JSON — the same
+    /// definition `GenResult` and `TreeResult` carry. See
+    /// [`ratio_wire::KvDiagnostics`].
+    #[serde(flatten)]
+    pub kv: KvDiagnostics,
     /// Resume diagnostics — absent on round 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume: Option<ResumeInfo>,
@@ -349,5 +343,84 @@ fn node_of(
         error,
         score_error: None,
         children: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `RoundResult` carries the same five KV diagnostics as `TreeResult` and
+    /// `ratio_wire::GenResult`, and rides the SAME gateway route — which
+    /// decodes them by string with a `-1`/`false` fallback
+    /// (`Gateway/ratio-gateway/src/tree.rs:400-405`), because neither result
+    /// type can be imported there. So a rename here compiles clean on both
+    /// sides and silently degrades the log to `-1`.
+    ///
+    /// The ToT twin of this test lives at `tot_core::tree::tests::
+    /// result_serializes_expected_keys_and_round_trips`. Both must move
+    /// together; that is the contract nothing else enforces statically.
+    #[test]
+    fn result_serializes_kv_diagnostics_and_round_trips() {
+        let resp = RoundResult {
+            model: "m".to_string(),
+            level: 1,
+            n: 3,
+            pickable: 3,
+            kv: KvDiagnostics {
+                boundary_found: true,
+                reused_tokens: 22,
+                // `Some(0)` deliberately, not `None`: a confirmed-zero replay
+                // and "the engine reported nothing" are different facts, and
+                // the gateway renders the latter as `-1`. Collapsing them is
+                // the bug these fields exist to prevent.
+                resident_pages: Some(3),
+                replayed_pages: Some(0),
+                rs_replayed: false,
+            },
+            resume: None,
+        };
+
+        let v = serde_json::to_value(&resp).unwrap();
+        for k in [
+            "model",
+            "level",
+            "n",
+            "pickable",
+            "boundary_found",
+            "reused_tokens",
+            "resident_pages",
+            "replayed_pages",
+            "rs_replayed",
+        ] {
+            assert!(v.get(k).is_some(), "round result missing key {k}");
+        }
+        // Absent on round 1, and `skip_serializing_if` must keep it off the wire
+        // rather than emitting `null` — the gateway probes `resume.kind`.
+        assert!(v.get("resume").is_none(), "round 1 must not emit a null resume");
+
+        let back: RoundResult = serde_json::from_value(v).expect("round result must round-trip");
+        assert_eq!(back.kv.boundary_found, true);
+        assert_eq!(back.kv.reused_tokens, 22);
+        assert_eq!(back.kv.resident_pages, Some(3));
+        assert_eq!(back.kv.replayed_pages, Some(0), "a measured zero must not decode as absent");
+        assert_eq!(back.kv.rs_replayed, false);
+    }
+
+    /// The resume block is what a think-more asserts on: a cold rebuild that
+    /// reports `warm` is indistinguishable from a real one downstream.
+    #[test]
+    fn resume_info_serializes_expected_keys() {
+        let v = serde_json::to_value(ResumeInfo {
+            kind: "warm".to_string(),
+            validated: true,
+            freed: 2,
+            refused: 0,
+        })
+        .unwrap();
+        for k in ["kind", "validated", "freed", "refused"] {
+            assert!(v.get(k).is_some(), "resume missing key {k}");
+        }
+        assert_eq!(v.get("kind").unwrap(), "warm");
     }
 }

@@ -30,6 +30,7 @@ use crate::schema::{ChatMessage, CueMode};
 use crate::{GenError, prompt};
 use inferlet::{Context, chat, model::Model};
 use ratio_names::SnapshotName;
+use ratio_wire::KvDiagnostics;
 use serde::{Deserialize, Serialize};
 
 /// How far back to look for a usable boundary when the exact one is absent.
@@ -131,6 +132,22 @@ impl OpenOutcome {
     /// engine reported nothing, so an unknown never reads as a success.
     pub fn is_resident_hit(&self) -> bool {
         self.found && matches!(self.replayed_pages, Some(0)) && !self.rs_replayed
+    }
+
+    /// Project onto the wire type every result carries.
+    ///
+    /// `OpenOutcome` stays the richer host-side record — `appended_tokens` and
+    /// `exact` drive sizing decisions and never reach the client. This is the
+    /// one place the narrowing happens, so chat, ToT and Best-of-N cannot
+    /// disagree about how an engine report becomes a wire field.
+    pub fn kv(&self) -> KvDiagnostics {
+        KvDiagnostics {
+            boundary_found: self.found,
+            reused_tokens: self.reused_tokens as u32,
+            resident_pages: self.resident_pages,
+            replayed_pages: self.replayed_pages,
+            rs_replayed: self.rs_replayed,
+        }
     }
 }
 

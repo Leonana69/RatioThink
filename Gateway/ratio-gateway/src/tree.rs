@@ -374,34 +374,34 @@ async fn drive(
                             return;
                         }
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
-                            // Untyped by necessity: this route serves BOTH
-                            // `tot_core::TreeResult` and
+                            // The envelope stays untyped by necessity: this route
+                            // serves BOTH `tot_core::TreeResult` and
                             // `bestofn_core::RoundResult`, and neither can be
                             // imported here — both pull in the wasm-only
-                            // `inferlet` SDK. Contrast chat.rs, which decodes
-                            // the shared `ratio_wire::GenResult` and IS
-                            // compiler-checked end to end.
+                            // `inferlet` SDK.
                             //
-                            // So these key names are a contract nothing enforces
-                            // statically. A rename on the guest side compiles
-                            // clean here and silently reads the fallback. What
-                            // catches it today is the crossmode/bon gates: a
-                            // wrong key logs -1/false and their assertions fail.
-                            // Closing this properly means hoisting these fields
-                            // into a `#[serde(flatten)]` struct in `ratio-wire`
-                            // so all three results share one definition.
+                            // The KV diagnostics inside it are NOT untyped any
+                            // more. Both results flatten the same
+                            // `ratio_wire::KvDiagnostics`, which this crate can
+                            // import, so the field names are now a
+                            // compiler-checked contract rather than five string
+                            // literals that a guest-side rename would silently
+                            // turn into -1/false. Every field defaults, so a
+                            // guest that predates the struct still decodes.
                             //
                             // `reused_tokens` is NAME-level. `replayed_pages` is
                             // the engine's own account and is what falsifies it;
                             // -1 means the engine reported nothing, so a missing
                             // value never reads as a confirmed zero.
+                            let kv: ratio_wire::KvDiagnostics =
+                                serde_json::from_value(v.clone()).unwrap_or_default();
                             tracing::info!(
                                 %route,
-                                boundary_found = v.get("boundary_found").and_then(|b| b.as_bool()).unwrap_or(false),
-                                reused_tokens = v.get("reused_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-                                resident_pages = v.get("resident_pages").and_then(|t| t.as_i64()).unwrap_or(-1),
-                                replayed_pages = v.get("replayed_pages").and_then(|t| t.as_i64()).unwrap_or(-1),
-                                rs_replayed = v.get("rs_replayed").and_then(|b| b.as_bool()).unwrap_or(false),
+                                boundary_found = kv.boundary_found,
+                                reused_tokens = kv.reused_tokens,
+                                resident_pages = kv.resident_pages.map(i64::from).unwrap_or(-1),
+                                replayed_pages = kv.replayed_pages.map(i64::from).unwrap_or(-1),
+                                rs_replayed = kv.rs_replayed,
                                 model = v.get("model").and_then(|m| m.as_str()).unwrap_or(""),
                                 synthesized = v.get("synthesized").and_then(|s| s.as_bool()).unwrap_or(false),
                                 // Best-of-N resume diagnostics. A think-more

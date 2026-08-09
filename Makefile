@@ -270,11 +270,20 @@ verify-inferlets-inputs: ## Verify only the input-side stamp fields (post-build 
 test-stamp: ## Unit tests for Inferlets/chat-apc/_stamp.py (review v1 follow-ups)
 	python3 Inferlets/chat-apc/_stamp_test.py
 
-test-inferlets: ## Run chat-apc Rust unit tests (native cargo test --lib; production gate)
-	cd Inferlets/chat-apc && cargo test --lib
+test-inferlets: ## Run Inferlet Rust tests for every crate with host tests (native cargo test; production gate)
+	@set -e; for c in chat-apc gen-core tot-core bestofn-core ratio-wire ratio-names; do \
+	  echo "== $$c =="; \
+	  (cd Inferlets/$$c && cargo test); \
+	done
 
-test-inferlets-gated: ## chat-apc Rust unit tests with the #458 exec-strategies feature (gated path)
+test-inferlets-gated: ## Rust unit tests with the #458 exec-strategies feature, for every crate that declares it (gated path)
 	cd Inferlets/chat-apc && cargo test --lib --features exec-strategies
+	# tot-core declares the same feature, and every `#[cfg(...exec-strategies)]`
+	# in it lives in schema.rs's test module. Filtered to `schema::` for the
+	# reason Gateway/dev/run.sh:337-342 gives: re-running the other 180+ tests
+	# under the flag proves nothing and doubles the suite. Filtered by MODULE,
+	# not by test name, so a new feature-gated schema test needs no edit here.
+	cd Inferlets/tot-core && cargo test --lib --features exec-strategies schema::
 
 test-unit: $(LOGDIR) ## Unit tests (XCTest) via xcrun swift test
 	@set +e +o pipefail; \
