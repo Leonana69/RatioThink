@@ -11,7 +11,8 @@ pub mod render;
 
 pub use envelope::{Envelope, ProtocolError, SeqChecker};
 pub use event::{
-    Channel, Event, EventSink, FinishReason, GenResult, NodeView, Pick, ToolCallDraft, VecSink,
+    Channel, Event, EventSink, FinishReason, GenResult, KvDiagnostics, NodeView, Pick,
+    ToolCallDraft, VecSink,
 };
 pub use render::{MetricsCounts, OpenAiSse, UsageCounts};
 

@@ -325,11 +325,7 @@ pub async fn run_chat(
         prompt_tokens,
         completion_tokens: usage_completion,
         context_window,
-        boundary_found: canonical.outcome.found,
-        reused_tokens: canonical.outcome.reused_tokens as u32,
-        resident_pages: canonical.outcome.resident_pages,
-        replayed_pages: canonical.outcome.replayed_pages,
-        rs_replayed: canonical.outcome.rs_replayed,
+        kv: canonical.outcome.kv(),
     })
 }
 

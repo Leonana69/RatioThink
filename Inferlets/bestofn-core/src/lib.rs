@@ -239,11 +239,7 @@ pub async fn run(input: BestOfNInput, sink: &dyn EventSink) -> Result<Outcome, G
         level,
         n: params.n,
         pickable,
-        boundary_found: entry.found,
-        reused_tokens: entry.reused_tokens as u32,
-        resident_pages: entry.resident_pages,
-        replayed_pages: entry.replayed_pages,
-        rs_replayed: entry.rs_replayed,
+        kv: entry.kv(),
         resume: resume_info,
     }))
 }

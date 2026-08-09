@@ -326,12 +326,12 @@ async fn buffered_response(
                     // `-1` renders as "engine reported nothing" so a missing
                     // value never reads as a confirmed zero.
                     tracing::info!(
-                        boundary_found = g.boundary_found,
-                        reused_tokens = g.reused_tokens,
+                        boundary_found = g.kv.boundary_found,
+                        reused_tokens = g.kv.reused_tokens,
                         prompt_tokens = g.prompt_tokens,
-                        resident_pages = g.resident_pages.map(i64::from).unwrap_or(-1),
-                        replayed_pages = g.replayed_pages.map(i64::from).unwrap_or(-1),
-                        rs_replayed = g.rs_replayed,
+                        resident_pages = g.kv.resident_pages.map(i64::from).unwrap_or(-1),
+                        replayed_pages = g.kv.replayed_pages.map(i64::from).unwrap_or(-1),
+                        rs_replayed = g.kv.rs_replayed,
                         "kv reuse"
                     );
                 }

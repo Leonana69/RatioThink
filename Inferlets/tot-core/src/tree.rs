@@ -4,6 +4,7 @@
 //! `cargo test --lib` (the wasm-only generation path lives in
 //! [`crate::search`]).
 
+use ratio_wire::KvDiagnostics;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -119,19 +120,12 @@ pub struct TreeResult {
     /// positive token/elapsed denominator, to avoid bogus UI metrics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_metrics: Option<GenerationMetrics>,
-    /// KV reuse diagnostics for THIS ToT turn (see the struct docs).
-    /// `reused_tokens` is NAME-level; read it against `replayed_pages`, which
-    /// is the engine's own account of how much it had to regenerate.
-    #[serde(default)]
-    pub boundary_found: bool,
-    #[serde(default)]
-    pub reused_tokens: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resident_pages: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replayed_pages: Option<u32>,
-    #[serde(default)]
-    pub rs_replayed: bool,
+    /// KV reuse diagnostics for THIS ToT turn. Flattened, so the fields stay at
+    /// the top level of the JSON — the same definition `GenResult` and
+    /// `RoundResult` carry, which is what lets the gateway decode all three by
+    /// type instead of by string. See [`ratio_wire::KvDiagnostics`].
+    #[serde(flatten)]
+    pub kv: KvDiagnostics,
 }
 
 /// Total generated-token throughput for one completed tree-of-thought run.
@@ -679,8 +673,18 @@ mod tests {
             final_answer: None,
             synthesized: false,
             generation_metrics: None,
-            boundary_found: true,
-            reused_tokens: 22,
+            kv: KvDiagnostics {
+                boundary_found: true,
+                reused_tokens: 22,
+                // `Some(0)` deliberately, not `None`: a confirmed-zero replay
+                // and "the engine reported nothing" are different facts, and
+                // the gateway renders the latter as `-1`. Collapsing them is
+                // the bug this field exists to prevent, so the round-trip
+                // below asserts it.
+                resident_pages: Some(3),
+                replayed_pages: Some(0),
+                rs_replayed: false,
+            },
         };
         let v = serde_json::to_value(&resp).unwrap();
         for k in [
@@ -694,6 +698,9 @@ mod tests {
             "synthesized",
             "boundary_found",
             "reused_tokens",
+            "resident_pages",
+            "replayed_pages",
+            "rs_replayed",
         ] {
             assert!(v.get(k).is_some(), "result missing key {k}");
         }
@@ -706,9 +713,12 @@ mod tests {
         }
         // It crosses a process boundary, so it must decode as well as encode.
         let back: TreeResult = serde_json::from_value(v).expect("result must round-trip");
-        assert_eq!(back.boundary_found, true);
-        assert_eq!(back.reused_tokens, 22);
+        assert_eq!(back.kv.boundary_found, true);
+        assert_eq!(back.kv.reused_tokens, 22);
         assert_eq!(back.model, "m");
+        assert_eq!(back.kv.resident_pages, Some(3));
+        assert_eq!(back.kv.replayed_pages, Some(0), "a measured zero must not decode as absent");
+        assert_eq!(back.kv.rs_replayed, false);
     }
 
     #[test]
