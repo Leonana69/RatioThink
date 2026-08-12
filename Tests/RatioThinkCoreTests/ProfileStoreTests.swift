@@ -2309,7 +2309,7 @@ final class ProfileStoreTests: XCTestCase {
     let (entries, scanErr) = ProfileStore.effectiveScan(directory: missing)
     XCTAssertNotNil(scanErr, "scanning a missing dir must report a scan error")
     let ids = Set(entries.compactMap { $0.profile?.id })
-    XCTAssertEqual(ids, ["chat", "tree-of-thought", "json-think", "best-of-n"],
+    XCTAssertEqual(ids, ["chat", "next-token-arena", "tree-of-thought", "json-think", "best-of-n"],
                    "all shipped base built-ins must be present even when the scan fails")
   }
 

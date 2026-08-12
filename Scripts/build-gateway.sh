@@ -68,7 +68,11 @@ mkdir -p "$DEST_DIR/inferlets"
 
 cp -f "$BUILT_BIN" "$DEST_DIR/ratio-gateway"
 for inf in "${INFERLETS[@]}"; do
-  cp -f "$REPO_ROOT/Inferlets/$inf/target/wasm32-wasip2/release/$inf.wasm" "$DEST_DIR/inferlets/$inf.wasm"
+  wasm="$REPO_ROOT/Inferlets/$inf/target/wasm32-wasip2/release/$inf.wasm"
+  if [[ ! -f "$wasm" && "$inf" == *-* ]]; then
+    wasm="$REPO_ROOT/Inferlets/$inf/target/wasm32-wasip2/release/${inf//-/_}.wasm"
+  fi
+  cp -f "$wasm" "$DEST_DIR/inferlets/$inf.wasm"
   cp -f "$REPO_ROOT/Inferlets/$inf/Pie.toml" "$DEST_DIR/inferlets/$inf.Pie.toml"
 done
 

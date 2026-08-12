@@ -297,9 +297,10 @@ public enum LocalAPIBindModeChange {
 /// speculation / constraint / tree-of-thought — those are per-request fields in
 /// the `/v1/chat/completions` body). So switching to a DIFFERENT profile that
 /// serves the SAME model is a marker-only change: the engine stays up and the
-/// new profile's parameters apply per request. Only a model change is a
-/// lifecycle event. The pre-#654 gate relaunched on any profile-id change,
-/// which is the observed "switching profiles restarts the engine" defect.
+/// new profile's parameters apply per request. Only a model change, or a
+/// profile that explicitly needs a profile-bound runtime, is a lifecycle
+/// event. The pre-#654 gate relaunched on any profile-id change, which is the
+/// observed "switching profiles restarts the engine" defect.
 public enum LocalAPIProfileSwitchGate {
   /// What the view should do for a requested selection.
   public enum Outcome: Equatable {
@@ -323,6 +324,9 @@ public enum LocalAPIProfileSwitchGate {
   ///   - runtimeModelID: the model the running engine actually serves
   ///     (`EngineSessionSnapshot.servedModelID`); compared against
   ///     `selectedModelID` to detect a same-model switch.
+  ///   - requiresProfileBoundRuntime: true when selecting this profile changes
+  ///     runtime capabilities even with the same model, for example switching
+  ///     from the daemon backend to a gateway-only inferlet route.
   ///   - restartInFlight: flipped to `true` only when the outcome is `.restart`,
   ///     so the view can synchronously reject a second switch before the async
   ///     stop/start cycle is observable on the poll channel.
@@ -332,6 +336,7 @@ public enum LocalAPIProfileSwitchGate {
     runtimeProfileID: String?,
     runtimeModelID: String?,
     state: LocalAPIState,
+    requiresProfileBoundRuntime: Bool = false,
     restartInFlight: inout Bool
   ) -> Outcome {
     guard !selectedProfileID.isEmpty else { return .reject }
@@ -340,6 +345,10 @@ public enum LocalAPIProfileSwitchGate {
     // action.
     guard let runtimeProfileID, runtimeProfileID != selectedProfileID else {
       return .selectOnly
+    }
+    if requiresProfileBoundRuntime {
+      restartInFlight = true
+      return .restart
     }
     // Running a DIFFERENT profile that serves the SAME model: the engine binds
     // only the model at boot, so there is nothing to relaunch — the new

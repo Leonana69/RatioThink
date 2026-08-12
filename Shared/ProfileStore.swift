@@ -353,6 +353,38 @@ public final class ProfileStore: ObservableObject {
   /// layer), gated alongside `tree-of-thought` by `seedsExampleProfiles`.
   public static let bestOfNProfileID = "best-of-n"
 
+  /// Canonical on-disk filename for the Next Token Arena built-in.
+  public static let nextTokenArenaFilename = "next-token-arena.toml"
+
+  /// Profile id encoded in `nextTokenArenaTOML`. A small game profile, gated
+  /// with the other example profiles.
+  public static let nextTokenArenaProfileID = "next-token-arena"
+
+  public static let nextTokenArenaRoute = "next-token-arena"
+
+  /// Next Token Arena profile. The launch-time inferlet stays `chat-apc` for
+  /// PIE daemon compatibility, but the launch resolver forces gateway mode so
+  /// the chat send path can route arena turns to the separate
+  /// `next-token-arena` wasm.
+  public static let nextTokenArenaTOML: String = """
+  builtin-origin = "next-token-arena"
+  id = "next-token-arena"
+  name = "Next Token Arena"
+  icon = "gamecontroller"
+  description = "A small logits game that reveals the model's next-token odds and branch previews."
+  model = "\(defaultChatModelID)"
+  inferlet = "chat-apc"
+
+  [sampling]
+  temperature = 0.9
+  top_p = 0.95
+  max_tokens = 64
+
+  [inferlet_args]
+  mode = "next-token-arena"
+
+  """
+
   /// Example Best-of-N interactive profile (#690): generates N candidates the
   /// user picks among (think-more vs stop). Non-default — an example built-in
   /// like tree-of-thought, never auto-selected. `thinking = true` (#708): each
@@ -488,13 +520,14 @@ public final class ProfileStore: ObservableObject {
     let shippedProfileID: String
   }
 
-  /// The built-ins, in display order. `tree-of-thought` (#413) and
-  /// `best-of-n` (#690) are EXAMPLE profiles gated by `seedsExampleProfiles`
-  /// (so hermetic tests can exclude them via
+  /// The built-ins, in display order. `next-token-arena`, `tree-of-thought`
+  /// (#413), and `best-of-n` (#690) are EXAMPLE profiles gated by
+  /// `seedsExampleProfiles` (so hermetic tests can exclude them via
   /// `baseEntries(directory:includeExample:)`); Chat and JSON Think are always
   /// part of the base set.
   public static let baseBuiltins: [BaseBuiltin] = [
     BaseBuiltin(id: defaultProfileID,            name: "Chat",            filename: defaultChatFilename,        toml: defaultChatTOML),
+    BaseBuiltin(id: nextTokenArenaProfileID,     name: "Next Token Arena", filename: nextTokenArenaFilename,     toml: nextTokenArenaTOML),
     BaseBuiltin(id: treeOfThoughtProfileID,      name: "Tree of Thought (experimental)", filename: treeOfThoughtFilename,      toml: treeOfThoughtTOML),
     BaseBuiltin(id: defaultJSONThinkProfileID,   name: "JSON Think",      filename: defaultJSONThinkFilename,   toml: defaultJSONThinkTOML),
     BaseBuiltin(id: bestOfNProfileID,            name: "Best of N",       filename: bestOfNFilename,            toml: bestOfNTOML),
@@ -502,7 +535,11 @@ public final class ProfileStore: ObservableObject {
 
   /// Ids of the EXAMPLE built-ins — excluded from the base set when
   /// `seedsExampleProfiles` is false (hermetic scan/lifecycle tests).
-  public static let exampleBuiltinIDs: Set<String> = [treeOfThoughtProfileID, bestOfNProfileID]
+  public static let exampleBuiltinIDs: Set<String> = [
+    nextTokenArenaProfileID,
+    treeOfThoughtProfileID,
+    bestOfNProfileID,
+  ]
 
   /// Every built-in id the CURRENT version ships, regardless of the
   /// `seedsExampleProfiles` flag (examples included). This is the "shipped
@@ -541,6 +578,9 @@ public final class ProfileStore: ObservableObject {
       HistoricalBuiltinFilename(filename: treeOfThoughtFilename,
                                 originID: treeOfThoughtProfileID,
                                 shippedProfileID: treeOfThoughtProfileID),
+      HistoricalBuiltinFilename(filename: nextTokenArenaFilename,
+                                originID: nextTokenArenaProfileID,
+                                shippedProfileID: nextTokenArenaProfileID),
       HistoricalBuiltinFilename(filename: defaultJSONThinkFilename,
                                 originID: defaultJSONThinkProfileID,
                                 shippedProfileID: defaultJSONThinkProfileID),
@@ -895,6 +935,34 @@ public final class ProfileStore: ObservableObject {
     return queue.sync(execute: work)
   }
 
+  private func enqueueListenerCallback(
+    _ callback: @escaping (ProfileStoreSnapshot) -> Void,
+    snapshot: ProfileStoreSnapshot,
+    epoch: UInt64
+  ) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      let stillCurrent = self.stateLock.withLock {
+        self._lifecycleEpoch == epoch
+      }
+      if stillCurrent { callback(snapshot) }
+    }
+  }
+
+  private func fireListenersInline(
+    _ callbacks: [((ProfileStoreSnapshot) -> Void)],
+    snapshot: ProfileStoreSnapshot,
+    epoch: UInt64
+  ) {
+    for callback in callbacks {
+      let stillCurrent = stateLock.withLock {
+        _lifecycleEpoch == epoch
+      }
+      guard stillCurrent else { break }
+      callback(snapshot)
+    }
+  }
+
   deinit {
     stopInternal()
   }
@@ -1154,12 +1222,14 @@ public final class ProfileStore: ObservableObject {
   /// and receive the full `ProfileStoreSnapshot` (entries +
   /// directory-level error).
   public func addListener(_ listener: @escaping (ProfileStoreSnapshot) -> Void) {
-    stateLock.withLock { listeners.append(listener) }
+    let replay: (snapshot: ProfileStoreSnapshot, epoch: UInt64) = stateLock.withLock {
+      listeners.append(listener)
+      return (makeSnapshotLocked(), _lifecycleEpoch)
+    }
     // Fire once with the current state so callers don't miss the
     // initial scan (or a directory-level error captured before they
     // registered).
-    let snap = snapshot
-    queue.async { listener(snap) }
+    enqueueListenerCallback(listener, snapshot: replay.snapshot, epoch: replay.epoch)
   }
 
   // MARK: - active profile
@@ -1509,6 +1579,7 @@ public final class ProfileStore: ObservableObject {
     var thrown: Error?
     var snap: ProfileStoreSnapshot?
     var toFire: [((ProfileStoreSnapshot) -> Void)] = []
+    var epoch: UInt64 = 0
     performOnQueue {
       do {
         try self.writeActiveProfileIDToDisk(id)
@@ -1530,11 +1601,14 @@ public final class ProfileStore: ObservableObject {
         self._activeProfileError = nil
         snap   = self.makeSnapshotLocked()
         toFire = self.listeners
+        epoch  = self._lifecycleEpoch
       }
     }
     if let thrown { throw thrown }
     if let snap {
-      for cb in toFire { queue.async { cb(snap) } }
+      for cb in toFire {
+        enqueueListenerCallback(cb, snapshot: snap, epoch: epoch)
+      }
     }
   }
 
@@ -1548,6 +1622,7 @@ public final class ProfileStore: ObservableObject {
     var thrown: Error?
     var snap: ProfileStoreSnapshot?
     var toFire: [((ProfileStoreSnapshot) -> Void)] = []
+    var epoch: UInt64 = 0
     performOnQueue {
       do {
         try self.removeActiveProfileFromDisk()
@@ -1564,11 +1639,14 @@ public final class ProfileStore: ObservableObject {
         self._activeProfileError = nil
         snap   = self.makeSnapshotLocked()
         toFire = self.listeners
+        epoch  = self._lifecycleEpoch
       }
     }
     if let thrown { throw thrown }
     if let snap {
-      for cb in toFire { queue.async { cb(snap) } }
+      for cb in toFire {
+        enqueueListenerCallback(cb, snapshot: snap, epoch: epoch)
+      }
     }
   }
 
@@ -2223,13 +2301,7 @@ public final class ProfileStore: ObservableObject {
         let capturedSnap = dispatch.snap
         let capturedEpoch = dispatch.epoch
         for cb in dispatch.listeners {
-          queue.async { [weak self] in
-            guard let self else { return }
-            let stillCurrent = self.stateLock.withLock {
-              self._lifecycleEpoch == capturedEpoch
-            }
-            if stillCurrent { cb(capturedSnap) }
-          }
+          enqueueListenerCallback(cb, snapshot: capturedSnap, epoch: capturedEpoch)
         }
       }
     }
@@ -2273,14 +2345,14 @@ public final class ProfileStore: ObservableObject {
     let (results, scanErr) = scanDirectory()
     var snap: ProfileStoreSnapshot!
     var toFire: [((ProfileStoreSnapshot) -> Void)] = []
+    var epoch: UInt64 = 0
     stateLock.withLock {
       commitScanResultsLocked(results: results, scanErr: scanErr)
       snap   = makeSnapshotLocked()
       toFire = listeners
+      epoch  = _lifecycleEpoch
     }
-    for cb in toFire {
-      cb(snap)
-    }
+    fireListenersInline(toFire, snapshot: snap, epoch: epoch)
     return snap
   }
 
@@ -2309,15 +2381,19 @@ public final class ProfileStore: ObservableObject {
       let readResult = self.readActiveProfileIDFromDisk()
       var snap: ProfileStoreSnapshot!
       var toFire: [((ProfileStoreSnapshot) -> Void)] = []
+      var epoch: UInt64 = 0
       self.stateLock.withLock {
         self.commitActiveReadResultLocked(readResult, source: .reload)
         snap   = self.makeSnapshotLocked()
         toFire = self.listeners
+        epoch  = self._lifecycleEpoch
       }
       // Fan out asynchronously so a listener that calls
       // `reloadActiveProfile()` from inside its callback cannot
       // synchronously stack-recurse into this same function.
-      for cb in toFire { self.queue.async { cb(snap) } }
+      for cb in toFire {
+        self.enqueueListenerCallback(cb, snapshot: snap, epoch: epoch)
+      }
       return snap
     }
   }

@@ -168,6 +168,10 @@ struct MessageBubble: View {
               answerStarted: !message.content.isEmpty
             )
           }
+          if let round = message.nextTokenArena {
+            NextTokenArenaCard(round: round, maxWidth: maxBubbleWidth)
+              .reportMessageBubbleFrame(.content(message.id))
+          }
           // Show the answer bubble once content arrives. When it is still
           // empty, render a placeholder bubble ONLY for a fresh streaming row
           // — not when a reasoning section (#329) or a live tree (#413) is
@@ -178,8 +182,12 @@ struct MessageBubble: View {
           // a normal content bubble (the picked text lives in `message.content`);
           // the N candidates stay available on-demand behind the default-folded
           // Options disclosure above.
-          if !message.content.isEmpty
-            || (message.reasoning.isEmpty && message.tot == nil && message.finishReason == nil) {
+          let shouldShowContentBubble = message.nextTokenArena == nil
+            && (
+              !message.content.isEmpty
+                || (message.reasoning.isEmpty && message.tot == nil && message.finishReason == nil)
+            )
+          if shouldShowContentBubble {
             bubble(background: Color.secondary.opacity(0.15),
                    foreground: .primary)
           }
@@ -200,7 +208,7 @@ struct MessageBubble: View {
           // as turn chrome, not a primary action — the destructive part is
           // guarded by the scaffold's confirmation when retry would erase
           // anything beyond this stale assistant.
-          if !message.content.isEmpty || onRetry != nil {
+          if message.nextTokenArena == nil && (!message.content.isEmpty || onRetry != nil) {
             HStack(spacing: 12) {
               if !message.content.isEmpty {
                 CopyAnswerButton(text: message.content)
@@ -336,6 +344,154 @@ private struct MessageBubbleFrameReporter: View {
 private extension View {
   func reportMessageBubbleFrame(_ id: MessageBubbleLayoutFrameID) -> some View {
     background(MessageBubbleFrameReporter(id: id))
+  }
+}
+
+private struct NextTokenArenaCard: View {
+  let round: NextTokenArenaRound
+  let maxWidth: CGFloat
+
+  private var maxProbability: Double {
+    max(round.top.map(\.probability).max() ?? 0.001, 0.001)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Image(systemName: "gamecontroller")
+          .foregroundStyle(Color.accentColor)
+        Text("Next Token Arena")
+          .font(.headline)
+        Spacer(minLength: 12)
+        Text("H \(format(round.entropy))")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+      promptRow
+      pickedRow
+      VStack(alignment: .leading, spacing: 6) {
+        ForEach(Array(round.top.prefix(8).enumerated()), id: \.element.id) { index, token in
+          probabilityRow(index: index, token: token)
+        }
+      }
+      if !round.branches.isEmpty {
+        Divider()
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Branch previews")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          ForEach(round.branches.prefix(5)) { branch in
+            branchRow(branch)
+          }
+        }
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: maxWidth, alignment: .leading)
+    .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(Color.secondary.opacity(0.16))
+    )
+    .accessibilityIdentifier("message.nextTokenArena")
+  }
+
+  private var promptRow: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text("Prompt")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Text(round.prompt)
+        .font(.body)
+        .textSelection(.enabled)
+        .lineLimit(4)
+    }
+  }
+
+  private var pickedRow: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "scope")
+        .foregroundStyle(.secondary)
+      Text("Picked")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      tokenText(round.picked.text)
+      Spacer(minLength: 12)
+      Text(percent(round.picked.probability))
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private func probabilityRow(index: Int, token: NextTokenArenaRound.Token) -> some View {
+    let isPicked = token.id == round.picked.id
+    return VStack(alignment: .leading, spacing: 3) {
+      HStack(spacing: 8) {
+        Text("#\(index + 1)")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+          .frame(width: 28, alignment: .leading)
+        tokenText(token.text)
+        Spacer(minLength: 12)
+        Text(percent(token.probability))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(isPicked ? Color.accentColor : .secondary)
+      }
+      GeometryReader { proxy in
+        ZStack(alignment: .leading) {
+          RoundedRectangle(cornerRadius: 2)
+            .fill(Color.secondary.opacity(0.12))
+          RoundedRectangle(cornerRadius: 2)
+            .fill(isPicked ? Color.accentColor : Color.secondary.opacity(0.45))
+            .frame(width: proxy.size.width * min(1, token.probability / maxProbability))
+        }
+      }
+      .frame(height: 4)
+    }
+  }
+
+  private func branchRow(_ branch: NextTokenArenaRound.BranchPreview) -> some View {
+    VStack(alignment: .leading, spacing: 3) {
+      HStack(spacing: 6) {
+        tokenText(branch.token.text)
+        Text(percent(branch.token.probability))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+      Text(branch.preview)
+        .font(.caption)
+        .foregroundStyle(.primary)
+        .lineLimit(2)
+        .textSelection(.enabled)
+    }
+  }
+
+  private func tokenText(_ raw: String) -> some View {
+    Text(displayToken(raw))
+      .font(.caption.monospaced())
+      .padding(.horizontal, 6)
+      .padding(.vertical, 2)
+      .background(Color.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
+  }
+
+  private func displayToken(_ raw: String) -> String {
+    if raw.isEmpty { return "<empty>" }
+    let visible = raw
+      .replacingOccurrences(of: "\n", with: "\\n")
+      .replacingOccurrences(of: "\t", with: "\\t")
+      .replacingOccurrences(of: "\r", with: "\\r")
+    if visible.allSatisfy(\.isWhitespace) {
+      return "\(visible.count) space\(visible.count == 1 ? "" : "s")"
+    }
+    return visible
+  }
+
+  private func percent(_ value: Double) -> String {
+    "\(Int((value * 100).rounded()))%"
+  }
+
+  private func format(_ value: Double) -> String {
+    String(format: "%.2f", value)
   }
 }
 

@@ -356,25 +356,28 @@ struct ChatScaffoldView: View {
   }
 
   /// #673: after a chat-toolbar profile swap is persisted, relaunch the engine
-  /// onto the new profile's served model when (and only when) the engine is
-  /// already running a DIFFERENT model. The model-change decision routes
+  /// onto the new profile's served model when the engine is already running a
+  /// different model. Gateway-only profiles such as Next Token Arena also
+  /// relaunch on same-model swaps because the backend capability changes. The
+  /// model-change decision routes
   /// through the shared `LocalAPIProfileSwitchGate` (via
   /// `profileSwapEngineOutcome`) so chat-toolbar profile swaps use the same
   /// model-aware switch policy introduced for #654. The relaunch itself routes
-  /// through the SAME stream-aware, target-bound engine-mutation path as the
-  /// pinned-mismatch relaunch and the explicit Load button
-  /// (`engineMutationDecision` → `loadDefaultModel` /
-  /// `deferEngineLoadUntilStreamsIdle`): a profile swap is not a permission to
-  /// interrupt an unrelated chat's in-flight stream, so a chat streaming
-  /// elsewhere defers the relaunch (and a stale target is dropped) before the
-  /// shared, app-scoped engine is touched.
+  /// through the same stream-aware, target-bound engine-mutation policy as the
+  /// pinned-mismatch relaunch and the explicit Load button: a profile swap is
+  /// not a permission to interrupt an unrelated chat's in-flight stream, so a
+  /// chat streaming elsewhere defers the relaunch (and a stale target is
+  /// dropped) before the shared, app-scoped engine is touched.
   private func reloadEngineIfProfileSwapChangesModel(to newProfileID: String) {
     var ignored = false  // F4: the swap path owns no persistent in-flight flag
+    let requiresProfileBoundRuntime =
+      profileStore.profile(forProfileID: newProfileID)?.nextTokenArena != nil
     let outcome = Self.profileSwapEngineOutcome(
       newProfileID: newProfileID,
       chatModelID: chats.first?.modelID,
       newProfileDefaultModel: profileStore.model(forProfileID: newProfileID),
       status: engineStatusStore.status,
+      requiresProfileBoundRuntime: requiresProfileBoundRuntime,
       restartInFlight: &ignored)
     guard outcome == .restart else { return }
     // `.restart` implies a running engine and a non-nil resolved target
@@ -383,9 +386,33 @@ struct ChatScaffoldView: View {
     guard let chat = chats.first, let target = gateTarget(for: chat)?.modelID else { return }
     switch Self.profileSwapRelaunchDecision(inFlightChatIDs: sendCoordinator.inFlightChatIDs) {
     case .runNow:
-      loadDefaultModel(target, for: chat)
+      if requiresProfileBoundRuntime {
+        restartEngineForProfile(profileID: newProfileID, modelOverride: target)
+      } else {
+        loadDefaultModel(target, for: chat)
+      }
     case .deferUntilIdle:
-      deferEngineLoadUntilStreamsIdle(target, for: chat)
+      if requiresProfileBoundRuntime {
+        deferProfileRestartUntilStreamsIdle(
+          profileID: newProfileID, modelOverride: target, for: chat)
+      } else {
+        deferEngineLoadUntilStreamsIdle(target, for: chat)
+      }
+    }
+  }
+
+  private func restartEngineForProfile(profileID: String, modelOverride: String?) {
+    Task { @MainActor in
+      do {
+        engineActionError = nil
+        helperBlock = nil
+        try await engineStatusStore.restartEngine(
+          profileID: profileID, modelOverride: modelOverride)
+      } catch let block as HelperUnavailable {
+        helperBlock = block
+      } catch {
+        engineActionError = Self.engineErrorMessage(error, verb: "restart")
+      }
     }
   }
 
@@ -1258,6 +1285,9 @@ struct ChatScaffoldView: View {
     // choose, and never send a pinned model into a known different resident
     // engine (#527).
     guard let modelID = resolvedModelIDForSend(for: chat) else { return }
+    let selectedProfile = profileStore.profile(forProfileID: viewModel.selectedProfileID)
+    let isNextTokenArena = selectedProfile?.nextTokenArena != nil
+    let inferletRoute: String? = isNextTokenArena ? ProfileStore.nextTokenArenaRoute : nil
     // Abandon cleanup (#690): starting a new turn orphans any uncommitted
     // Best-of-N round in this chat — free its candidate snapshots now so a long
     // session cannot accumulate unpicked KV. Runs before this turn is added, so
@@ -1289,9 +1319,11 @@ struct ChatScaffoldView: View {
       // #572: thread the selected profile's output-constraint mode. A "JSON
       // Think" profile attaches `response_format: json_object` so chat-apc runs
       // JSON-grammar-constrained decoding; other profiles carry none. Built
-      // here so both the ToT dispatch and the normal send get it. Ordered last
-      // to match the `ChatSendRequestOptions` init parameter order.
-      responseFormat: profileStore.responseFormat(forProfileID: viewModel.selectedProfileID)
+      // here so both the ToT dispatch and the normal send get it.
+      responseFormat: profileStore.responseFormat(forProfileID: viewModel.selectedProfileID),
+      // Next Token Arena is a chat-v1 inferlet driven through the gateway's
+      // route field; nil keeps ordinary chat byte-identical.
+      inferletRoute: inferletRoute
     )
 
     // #413: when the active profile declares `mode = "tree-of-thought"`,
@@ -1303,7 +1335,7 @@ struct ChatScaffoldView: View {
 
     // #523 Part B binds the whole profile so the ToT dispatch can source its
     // candidate-generation temperature from it (`toTRequestSampling` below).
-    if let totProfile = profileStore.profile(forProfileID: viewModel.selectedProfileID),
+    if let totProfile = selectedProfile,
        let totConfig = totProfile.treeOfThought {
       sendController.sendTreeOfThought(
         chat: chat,
@@ -1321,7 +1353,7 @@ struct ChatScaffoldView: View {
     // #690: a `mode = "best-of-n"` profile routes the turn to the Best-of-N
     // dispatch — round 1 generates N candidates the user picks among. Like ToT,
     // the launched inferlet stays chat-apc; this is a per-request dispatch mode.
-    if let bonProfile = profileStore.profile(forProfileID: viewModel.selectedProfileID),
+    if let bonProfile = selectedProfile,
        let bonConfig = bonProfile.bestOfN {
       sendController.sendBestOfN(
         chat: chat,
@@ -1757,15 +1789,18 @@ struct ChatScaffoldView: View {
   /// the new profile would boot is the chat's pin-over-default resolution
   /// (`ModelTarget.resolve`) — exactly what `startEngineForSelectedProfile`
   /// boots (`chats.first?.modelID`, else the profile default). A running
-  /// engine serving a DIFFERENT model → `.restart`; same model, stopped, or
-  /// mid-transition → `.selectOnly`/`.reject`, so #3's marker-only-while-
-  /// stopped contract and the same-model no-relaunch invariant both hold.
+  /// engine serving a DIFFERENT model → `.restart`; same model normally stays
+  /// `.selectOnly`, except profiles whose runtime capabilities are profile
+  /// bound (for example gateway-only routes). Stopped or mid-transition still
+  /// maps to `.selectOnly`/`.reject`, preserving #3's marker-only-while-stopped
+  /// contract.
   /// Pure + static so the matrix is unit-tested without a view host.
   static func profileSwapEngineOutcome(
     newProfileID: String,
     chatModelID: String?,
     newProfileDefaultModel: String?,
     status: EngineStatus,
+    requiresProfileBoundRuntime: Bool = false,
     restartInFlight: inout Bool
   ) -> LocalAPIProfileSwitchGate.Outcome {
     let selectedModelID = ModelTarget.resolve(
@@ -1792,6 +1827,7 @@ struct ChatScaffoldView: View {
       runtimeProfileID: runtimeProfileID,
       runtimeModelID: runtimeModelID,
       state: LocalAPIState.make(status: status, hasActiveProfile: true),
+      requiresProfileBoundRuntime: requiresProfileBoundRuntime,
       restartInFlight: &restartInFlight)
   }
 
@@ -1899,31 +1935,60 @@ struct ChatScaffoldView: View {
   }
 
   struct DeferredEngineMutation: Equatable {
+    enum Kind: Equatable {
+      case explicitLoad
+      case profileRestart(profileID: String)
+    }
+
     let chatID: UUID
     let targetModelID: String
+    let kind: Kind
     let generation: Int
 
     static func explicitLoad(chatID: UUID,
                              targetModelID: String,
                              generation: Int) -> DeferredEngineMutation {
-      DeferredEngineMutation(chatID: chatID, targetModelID: targetModelID, generation: generation)
+      DeferredEngineMutation(
+        chatID: chatID,
+        targetModelID: targetModelID,
+        kind: .explicitLoad,
+        generation: generation)
+    }
+
+    static func profileRestart(chatID: UUID,
+                               profileID: String,
+                               targetModelID: String,
+                               generation: Int) -> DeferredEngineMutation {
+      DeferredEngineMutation(
+        chatID: chatID,
+        targetModelID: targetModelID,
+        kind: .profileRestart(profileID: profileID),
+        generation: generation)
     }
   }
 
   enum DeferredEngineMutationResolution: Equatable {
     case drop
     case run(modelID: String)
+    case restart(profileID: String, modelID: String)
   }
 
   static func deferredEngineMutationResolution(
     queued: DeferredEngineMutation,
     currentChatID: UUID,
-    currentTargetModelID: String?
+    currentTargetModelID: String?,
+    currentProfileID: String
   ) -> DeferredEngineMutationResolution {
     guard queued.chatID == currentChatID else { return .drop }
     guard let currentTargetModelID, !currentTargetModelID.isEmpty else { return .drop }
     guard currentTargetModelID == queued.targetModelID else { return .drop }
-    return .run(modelID: queued.targetModelID)
+    switch queued.kind {
+    case .explicitLoad:
+      return .run(modelID: queued.targetModelID)
+    case .profileRestart(let profileID):
+      guard currentProfileID == profileID else { return .drop }
+      return .restart(profileID: profileID, modelID: queued.targetModelID)
+    }
   }
 
   static func replacingDeferredEngineMutation(
@@ -1957,12 +2022,57 @@ struct ChatScaffoldView: View {
       switch Self.deferredEngineMutationResolution(
         queued: queued,
         currentChatID: chat.id,
-        currentTargetModelID: gateTarget(for: chat)?.modelID
+        currentTargetModelID: gateTarget(for: chat)?.modelID,
+        currentProfileID: viewModel.selectedProfileID
       ) {
       case .drop:
         break
       case .run(let modelID):
         loadDefaultModel(modelID, for: chat)
+      case .restart(let profileID, let modelID):
+        restartEngineForProfile(profileID: profileID, modelOverride: modelID)
+      }
+    }
+  }
+
+  private func deferProfileRestartUntilStreamsIdle(
+    profileID: String,
+    modelOverride: String,
+    for chat: Chat
+  ) {
+    deferredEngineMutationGeneration += 1
+    let queued = DeferredEngineMutation.profileRestart(
+      chatID: chat.id,
+      profileID: profileID,
+      targetModelID: modelOverride,
+      generation: deferredEngineMutationGeneration)
+    deferredEngineMutation = Self.replacingDeferredEngineMutation(
+      current: deferredEngineMutation,
+      replacement: queued)
+    deferredEngineSyncTask?.cancel()
+    deferredEngineSyncTask = Task { @MainActor in
+      defer { deferredEngineSyncTask = nil }
+      while Self.engineMutationDecision(inFlightChatIDs: sendCoordinator.inFlightChatIDs) == .deferUntilIdle {
+        do {
+          try await Task.sleep(nanoseconds: 250_000_000)
+        } catch {
+          return
+        }
+      }
+      guard deferredEngineMutation == queued else { return }
+      deferredEngineMutation = nil
+      switch Self.deferredEngineMutationResolution(
+        queued: queued,
+        currentChatID: chat.id,
+        currentTargetModelID: gateTarget(for: chat)?.modelID,
+        currentProfileID: viewModel.selectedProfileID
+      ) {
+      case .drop:
+        break
+      case .run(let modelID):
+        loadDefaultModel(modelID, for: chat)
+      case .restart(let profileID, let modelID):
+        restartEngineForProfile(profileID: profileID, modelOverride: modelID)
       }
     }
   }

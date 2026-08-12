@@ -328,6 +328,10 @@ public struct ChatRequest: Codable, Equatable, Sendable {
   public let messages: [ChatMessage]
   public let sampling: ChatSampling
   public let stream: Bool
+  /// Optional gateway route override. Omitted for ordinary chat so the daemon
+  /// and gateway paths stay byte-identical; present for small chat-shaped
+  /// inferlets such as Next Token Arena.
+  public let inferlet: String?
   /// Optional chat-apc speculation extension. `nil` → no `speculation`
   /// key on the wire (normal decode). Nested-encoded (not flattened).
   public let speculation: ChatSpeculation?
@@ -347,6 +351,7 @@ public struct ChatRequest: Codable, Equatable, Sendable {
               messages: [ChatMessage],
               sampling: ChatSampling = ChatSampling(),
               stream: Bool = true,
+              inferlet: String? = nil,
               speculation: ChatSpeculation? = nil,
               cache: ChatCacheDirective? = nil,
               boundary: ChatCacheDirective? = nil,
@@ -355,6 +360,7 @@ public struct ChatRequest: Codable, Equatable, Sendable {
     self.messages = messages
     self.sampling = sampling
     self.stream = stream
+    self.inferlet = inferlet
     self.speculation = speculation
     self.cache = cache
     self.boundary = boundary
@@ -370,6 +376,7 @@ public struct ChatRequest: Codable, Equatable, Sendable {
     case model
     case messages
     case stream
+    case inferlet
     case temperature
     case topP = "top_p"
     case maxTokens = "max_tokens"
@@ -384,6 +391,7 @@ public struct ChatRequest: Codable, Equatable, Sendable {
     try c.encode(model, forKey: .model)
     try c.encode(messages, forKey: .messages)
     try c.encode(stream, forKey: .stream)
+    try c.encodeIfPresent(inferlet, forKey: .inferlet)
     try c.encode(sampling.temperature, forKey: .temperature)
     try c.encode(sampling.topP, forKey: .topP)
     try c.encode(sampling.maxTokens, forKey: .maxTokens)
@@ -398,6 +406,7 @@ public struct ChatRequest: Codable, Equatable, Sendable {
     self.model = try c.decode(String.self, forKey: .model)
     self.messages = try c.decode([ChatMessage].self, forKey: .messages)
     self.stream = try c.decode(Bool.self, forKey: .stream)
+    self.inferlet = try c.decodeIfPresent(String.self, forKey: .inferlet)
     self.sampling = ChatSampling(
       temperature: try c.decode(Double.self, forKey: .temperature),
       topP: try c.decode(Double.self, forKey: .topP),

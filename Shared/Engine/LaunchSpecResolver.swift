@@ -310,7 +310,10 @@ public struct LaunchSpecResolver {
       // logs inside `setActiveModelID` but must never fail the launch.
       try? profileStore.setActiveModelID(model)
       // Carried from the XPC start request, not the helper's environment.
-      spec.chatBackend = chatBackend
+      // Next Token Arena is a separate chat-v1 gateway route, so launching it
+      // through the legacy chat-apc daemon would make normal chat work while
+      // arena turns fail with inferlet_not_found.
+      spec.chatBackend = profile.nextTokenArena != nil ? .gateway : chatBackend
       return .success(spec)
     } catch {
       Self.log.error("launcher spec construction failed for profile=\(profile.id, privacy: .public): \(String(describing: error), privacy: .public)")

@@ -695,6 +695,7 @@ public final class ChatSendController: ObservableObject {
       messages: turns,
       sampling: sampling,
       stream: true,
+      inferlet: options.inferletRoute,
       speculation: wireSpec,
       cache: cache,
       boundary: cache,
@@ -1593,6 +1594,9 @@ public struct ChatSendRequestOptions: Equatable, Sendable {
   /// the profile has no `[constraint]`. `makeRequest` attaches the OpenAI
   /// `response_format` wire field when `.jsonObject` — see #572.
   public let responseFormat: ResponseFormat?
+  /// Gateway chat-v1 route override for small inferlets that still use the
+  /// chat-completions transport. Nil means ordinary chat.
+  public let inferletRoute: String?
 
   public init(
     modelID: String,
@@ -1602,7 +1606,8 @@ public struct ChatSendRequestOptions: Equatable, Sendable {
     speculation: Profile.Speculation? = nil,
     maxOutputTokensCeiling: Int? = nil,
     kvUsageSnapshot: KVUsageSnapshot? = nil,
-    responseFormat: ResponseFormat? = nil
+    responseFormat: ResponseFormat? = nil,
+    inferletRoute: String? = nil
   ) {
     self.modelID = modelID
     self.sampling = sampling
@@ -1612,6 +1617,7 @@ public struct ChatSendRequestOptions: Equatable, Sendable {
     self.maxOutputTokensCeiling = maxOutputTokensCeiling
     self.kvUsageSnapshot = kvUsageSnapshot
     self.responseFormat = responseFormat
+    self.inferletRoute = inferletRoute
   }
 
   /// A copy with `sampling` replaced. Used by the tree-of-thought dispatch
@@ -1626,7 +1632,8 @@ public struct ChatSendRequestOptions: Equatable, Sendable {
       speculation: speculation,
       maxOutputTokensCeiling: maxOutputTokensCeiling,
       kvUsageSnapshot: kvUsageSnapshot,
-      responseFormat: responseFormat
+      responseFormat: responseFormat,
+      inferletRoute: inferletRoute
     )
   }
 }

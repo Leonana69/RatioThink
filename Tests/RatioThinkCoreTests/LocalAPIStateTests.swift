@@ -852,6 +852,25 @@ final class LocalAPIStateTests: XCTestCase {
                    "no relaunch fires, so the in-flight guard must NOT be armed")
   }
 
+  func test_same_model_profile_switch_relaunches_when_runtime_is_profile_bound() {
+    let state = runningState(profileID: "chat", servedModel: modelY)
+    var restartInFlight = false
+
+    let outcome = LocalAPIProfileSwitchGate.decide(
+      selectedProfileID: "next-token-arena",
+      selectedModelID: modelY,
+      runtimeProfileID: "chat",
+      runtimeModelID: modelY,
+      state: state,
+      requiresProfileBoundRuntime: true,
+      restartInFlight: &restartInFlight
+    )
+
+    XCTAssertEqual(outcome, .restart)
+    XCTAssertTrue(restartInFlight,
+                  "gateway-only profiles must rebuild even when they reuse the resident model")
+  }
+
   /// A switch to a profile that serves a DIFFERENT model is a genuine engine
   /// lifecycle event (v1 pie binds the model at boot, no runtime swap).
   func test_different_model_profile_switch_relaunches_the_engine() {

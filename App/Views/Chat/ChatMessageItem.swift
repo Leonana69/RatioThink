@@ -29,6 +29,9 @@ struct ChatMessageItem: Identifiable, Equatable {
   /// choice. The candidates render from `tot`; this drives the select / collapse
   /// / highlight affordance. Nil for ordinary chat and tree-of-thought turns.
   var bestOfN: BestOfNRound?
+  /// Decoded Next Token Arena payload. Nil for ordinary chat and while an arena
+  /// JSON delta is incomplete.
+  var nextTokenArena: NextTokenArenaRound?
   /// Engine `finish_reason` for a completed turn (`"stop"`, `"length"`,
   /// `"cancelled"`, …), or `nil` while the turn is still streaming. Lets
   /// `MessageBubble` surface a truncated-before-answer turn instead of a
@@ -47,6 +50,7 @@ struct ChatMessageItem: Identifiable, Equatable {
     reasoning: String = "",
     tot: ToTTree? = nil,
     bestOfN: BestOfNRound? = nil,
+    nextTokenArena: NextTokenArenaRound? = nil,
     finishReason: String? = nil,
     generationPerformance: GenerationMetrics? = nil,
     hasAttachmentContext: Bool = false
@@ -57,6 +61,7 @@ struct ChatMessageItem: Identifiable, Equatable {
     self.reasoning = reasoning
     self.tot = tot
     self.bestOfN = bestOfN
+    self.nextTokenArena = nextTokenArena
     self.finishReason = finishReason
     self.generationPerformance = generationPerformance
     self.hasAttachmentContext = hasAttachmentContext
@@ -107,9 +112,13 @@ extension ChatMessageItem {
     // longer decodes is treated as "no tree" rather than failing the row.
     let tot = message.tot.flatMap { try? JSONDecoder().decode(ToTTree.self, from: $0) }
     let bestOfN = message.bestOfN.flatMap { try? JSONDecoder().decode(BestOfNRound.self, from: $0) }
+    let nextTokenArena = role == .assistant
+      ? NextTokenArenaRound.decode(from: message.content)
+      : nil
     self.init(
       id: message.id, role: role, content: message.content,
       reasoning: message.reasoning, tot: tot, bestOfN: bestOfN,
+      nextTokenArena: nextTokenArena,
       finishReason: message.finishReason,
       generationPerformance: message.generationPerformance,
       hasAttachmentContext: !(message.extractedAttachmentText?.isEmpty ?? true))

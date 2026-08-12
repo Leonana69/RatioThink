@@ -115,6 +115,8 @@ targets:
           - $(SRCROOT)/Inferlets/chat/Pie.toml
           - $(SRCROOT)/Inferlets/echo/src/lib.rs
           - $(SRCROOT)/Inferlets/echo/Pie.toml
+          - $(SRCROOT)/Inferlets/next-token-arena/src/lib.rs
+          - $(SRCROOT)/Inferlets/next-token-arena/Pie.toml
           - $(SRCROOT)/Inferlets/gen-core/src/lib.rs
           - $(SRCROOT)/Inferlets/ratio-wire/src/lib.rs
           - $(SRCROOT)/Gateway/ratio-gateway/src/main.rs
@@ -128,6 +130,8 @@ targets:
           - $(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/gateway/inferlets/chat.Pie.toml
           - $(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/gateway/inferlets/echo.wasm
           - $(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/gateway/inferlets/echo.Pie.toml
+          - $(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/gateway/inferlets/next-token-arena.wasm
+          - $(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/gateway/inferlets/next-token-arena.Pie.toml
       - name: Stage Helper LaunchAgent plist
         script: |
           set -euo pipefail

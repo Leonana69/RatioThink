@@ -287,6 +287,36 @@ final class LaunchSpecResolverTests: XCTestCase {
                    "helper-owned Resume/auto-relaunch starts must inherit the persisted Local API bind mode before engineHost.start(spec)")
   }
 
+  func test_resolveLauncherSpec_nextTokenArena_forces_gateway_backend() throws {
+    let store = try makeSeededDefaultStore()
+    defer { store.stop() }
+
+    let binary = tempDir.appendingPathComponent("pie-fake-next-token-arena", isDirectory: false)
+    try touchExecutable(at: binary)
+    let resources = try writeInferletResources(name: "chat-apc", version: "0.1.0")
+    let modelsRoot = tempDir.appendingPathComponent("models-next-token-arena", isDirectory: true)
+    try stageModel(named: ProfileStore.defaultChatModelID, in: modelsRoot)
+    let resolver = LaunchSpecResolver(
+      profileStore: store,
+      pieBinary: { binary },
+      modelsRoot: { modelsRoot },
+      pieControlResources: { resources },
+      pieHome: { self.tempDir },
+      subprocessEnvironment: { [:] }
+    )
+
+    guard case .success(let spec) = resolver.resolveLauncherSpec(
+      profileID: ProfileStore.nextTokenArenaProfileID,
+      chatBackend: .daemon
+    ) else {
+      return XCTFail("Next Token Arena built-in profile must resolve")
+    }
+    XCTAssertEqual(spec.inferletNameAtVersion, "chat-apc@0.1.0",
+                   "the boot inferlet remains chat-apc; only the HTTP backend changes")
+    XCTAssertEqual(spec.chatBackend, .gateway,
+                   "Next Token Arena must not depend on RATIO_CHAT_BACKEND=gateway")
+  }
+
   func test_default_helper_bind_mode_reads_shared_app_persisted_preference() throws {
     let store = try makeStoreWithChatProfile()
     defer { store.stop() }

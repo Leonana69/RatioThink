@@ -1,0 +1,20 @@
+[package]
+name = "next-token-arena"
+version = "0.1.0"
+description = "A small probability game: reveal the model's next token distribution and forked continuations."
+authors = ["RatioThink"]
+
+[runtime]
+core = "^0.2.0"
+
+[parameters]
+model = {type = "string", description = "engine-registered model id"}
+temperature = {type = "float", optional = true, description = "sampling temperature for the picked token and branch previews"}
+top_p = {type = "float", optional = true, description = "top-p sampling for the picked token and branch previews"}
+
+[ratio]
+route = "next-token-arena"
+aliases = ["nta"]
+protocol = "chat-v1"
+preload = false
+snapshot_prefixes = []

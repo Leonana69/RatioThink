@@ -109,10 +109,22 @@ struct RootView: View {
       .navigationTitle("")
       .toolbar {
         ToolbarItem(placement: .navigation) {
-          Button(action: createChat) {
-            Image(systemName: "square.and.pencil")
+          Menu {
+            Button {
+              createChat()
+            } label: {
+              Label("New Chat", systemImage: "text.bubble")
+            }
+            Button {
+              createNextTokenArenaChat()
+            } label: {
+              Label("Next Token Arena", systemImage: "gamecontroller")
+            }
+          } label: {
+            Image(systemName: "plus")
           }
-          .help("New Chat")
+          .menuStyle(.button)
+          .help("New")
           .accessibilityIdentifier("chats.newButton")
         }
       }
@@ -157,12 +169,22 @@ struct RootView: View {
   /// through the same `ChatCreation` seam as the list/empty-state buttons so the
   /// save + #460 profile/model inheritance stay in one place.
   private func createChat() {
+    createChat(profileID: ProfileStore.defaultProfileID,
+               contextLabel: "RootView.newChat")
+  }
+
+  private func createNextTokenArenaChat() {
+    createChat(profileID: ProfileStore.nextTokenArenaProfileID,
+               contextLabel: "RootView.nextTokenArenaChat")
+  }
+
+  private func createChat(profileID: String, contextLabel: String) {
     let source = windowState.selectedItemID.flatMap { id in chats.first { $0.id == id } }
     if let id = ChatCreation.create(
       in: modelContext,
       persistenceStatus: persistenceStatus,
-      contextLabel: "RootView.newChat",
-      profileID: source?.profileID ?? "chat",
+      contextLabel: contextLabel,
+      profileID: profileID,
       modelID: source?.modelID
     ) {
       windowState.selectedSection = .chats

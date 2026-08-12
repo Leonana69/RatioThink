@@ -1015,6 +1015,7 @@ final class ChatSendControllerTests: XCTestCase {
   private func capturedRequest(
     speculation: Profile.Speculation?,
     responseFormat: ResponseFormat? = nil,
+    inferletRoute: String? = nil,
     sampling: ChatSampling = ChatSampling(temperature: 0.7, topP: 0.9, maxTokens: 100),
     profileID: String = "repeat-boost"
   ) async throws -> ChatRequest {
@@ -1038,7 +1039,8 @@ final class ChatSendControllerTests: XCTestCase {
         sampling: sampling,
         profileID: profileID,
         speculation: speculation,
-        responseFormat: responseFormat
+        responseFormat: responseFormat,
+        inferletRoute: inferletRoute
       )
     )
     try await waitUntil("stream finishes") { !controller.isInFlight }
@@ -1217,6 +1219,21 @@ final class ChatSendControllerTests: XCTestCase {
   func test_send_nilResponseFormat_no_field() async throws {
     let req = try await capturedRequest(speculation: nil, responseFormat: nil)
     XCTAssertNil(req.responseFormat, "no profile constraint → byte-identical normal chat")
+  }
+
+  // MARK: - inferlet route injection
+
+  func test_send_inferletRoute_attaches_field() async throws {
+    let req = try await capturedRequest(
+      speculation: nil,
+      inferletRoute: ProfileStore.nextTokenArenaRoute,
+      profileID: ProfileStore.nextTokenArenaProfileID)
+
+    XCTAssertEqual(req.inferlet, ProfileStore.nextTokenArenaRoute)
+
+    let body = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: try JSONEncoder().encode(req)) as? [String: Any])
+    XCTAssertEqual(body["inferlet"] as? String, ProfileStore.nextTokenArenaRoute)
   }
 
   /// End-to-end golden tie: the seeded built-in "JSON Think" profile must
