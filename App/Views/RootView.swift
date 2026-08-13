@@ -120,6 +120,11 @@ struct RootView: View {
             } label: {
               Label("Next Token Arena", systemImage: "gamecontroller")
             }
+            Button {
+              createProbabilityLensChat()
+            } label: {
+              Label("Probability Lens", systemImage: "eye")
+            }
           } label: {
             Image(systemName: "plus")
           }
@@ -176,6 +181,11 @@ struct RootView: View {
   private func createNextTokenArenaChat() {
     createChat(profileID: ProfileStore.nextTokenArenaProfileID,
                contextLabel: "RootView.nextTokenArenaChat")
+  }
+
+  private func createProbabilityLensChat() {
+    createChat(profileID: ProfileStore.probabilityLensProfileID,
+               contextLabel: "RootView.probabilityLensChat")
   }
 
   private func createChat(profileID: String, contextLabel: String) {

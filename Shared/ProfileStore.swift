@@ -385,6 +385,32 @@ public final class ProfileStore: ObservableObject {
 
   """
 
+  /// Canonical identity and route for the Probability Lens built-in.
+  public static let probabilityLensFilename = "probability-lens.toml"
+  public static let probabilityLensProfileID = "probability-lens"
+  public static let probabilityLensRoute = "probability-lens"
+
+  /// Confidence-colored chat backed by per-token distribution and entropy
+  /// probes in the dedicated `probability-lens` gateway inferlet.
+  public static let probabilityLensTOML: String = """
+  builtin-origin = "probability-lens"
+  id = "probability-lens"
+  name = "Probability Lens"
+  icon = "eye"
+  description = "Color an answer by model confidence and inspect likely alternatives at every token."
+  model = "\(defaultChatModelID)"
+  inferlet = "chat-apc"
+
+  [sampling]
+  temperature = 0.7
+  top_p = 0.9
+  max_tokens = 512
+
+  [inferlet_args]
+  mode = "probability-lens"
+
+  """
+
   /// Example Best-of-N interactive profile (#690): generates N candidates the
   /// user picks among (think-more vs stop). Non-default — an example built-in
   /// like tree-of-thought, never auto-selected. `thinking = true` (#708): each
@@ -520,7 +546,7 @@ public final class ProfileStore: ObservableObject {
     let shippedProfileID: String
   }
 
-  /// The built-ins, in display order. `next-token-arena`, `tree-of-thought`
+  /// The built-ins, in display order. `next-token-arena`, `probability-lens`, `tree-of-thought`
   /// (#413), and `best-of-n` (#690) are EXAMPLE profiles gated by
   /// `seedsExampleProfiles` (so hermetic tests can exclude them via
   /// `baseEntries(directory:includeExample:)`); Chat and JSON Think are always
@@ -528,6 +554,7 @@ public final class ProfileStore: ObservableObject {
   public static let baseBuiltins: [BaseBuiltin] = [
     BaseBuiltin(id: defaultProfileID,            name: "Chat",            filename: defaultChatFilename,        toml: defaultChatTOML),
     BaseBuiltin(id: nextTokenArenaProfileID,     name: "Next Token Arena", filename: nextTokenArenaFilename,     toml: nextTokenArenaTOML),
+    BaseBuiltin(id: probabilityLensProfileID,    name: "Probability Lens", filename: probabilityLensFilename,    toml: probabilityLensTOML),
     BaseBuiltin(id: treeOfThoughtProfileID,      name: "Tree of Thought (experimental)", filename: treeOfThoughtFilename,      toml: treeOfThoughtTOML),
     BaseBuiltin(id: defaultJSONThinkProfileID,   name: "JSON Think",      filename: defaultJSONThinkFilename,   toml: defaultJSONThinkTOML),
     BaseBuiltin(id: bestOfNProfileID,            name: "Best of N",       filename: bestOfNFilename,            toml: bestOfNTOML),
@@ -537,6 +564,7 @@ public final class ProfileStore: ObservableObject {
   /// `seedsExampleProfiles` is false (hermetic scan/lifecycle tests).
   public static let exampleBuiltinIDs: Set<String> = [
     nextTokenArenaProfileID,
+    probabilityLensProfileID,
     treeOfThoughtProfileID,
     bestOfNProfileID,
   ]
@@ -581,6 +609,9 @@ public final class ProfileStore: ObservableObject {
       HistoricalBuiltinFilename(filename: nextTokenArenaFilename,
                                 originID: nextTokenArenaProfileID,
                                 shippedProfileID: nextTokenArenaProfileID),
+      HistoricalBuiltinFilename(filename: probabilityLensFilename,
+                                originID: probabilityLensProfileID,
+                                shippedProfileID: probabilityLensProfileID),
       HistoricalBuiltinFilename(filename: defaultJSONThinkFilename,
                                 originID: defaultJSONThinkProfileID,
                                 shippedProfileID: defaultJSONThinkProfileID),

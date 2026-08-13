@@ -172,6 +172,10 @@ struct MessageBubble: View {
             NextTokenArenaCard(round: round, maxWidth: maxBubbleWidth)
               .reportMessageBubbleFrame(.content(message.id))
           }
+          if let payload = message.probabilityLens {
+            ProbabilityLensCard(payload: payload, maxWidth: maxBubbleWidth)
+              .reportMessageBubbleFrame(.content(message.id))
+          }
           // Show the answer bubble once content arrives. When it is still
           // empty, render a placeholder bubble ONLY for a fresh streaming row
           // — not when a reasoning section (#329) or a live tree (#413) is
@@ -183,6 +187,7 @@ struct MessageBubble: View {
           // the N candidates stay available on-demand behind the default-folded
           // Options disclosure above.
           let shouldShowContentBubble = message.nextTokenArena == nil
+            && message.probabilityLens == nil
             && (
               !message.content.isEmpty
                 || (message.reasoning.isEmpty && message.tot == nil && message.finishReason == nil)
@@ -208,10 +213,10 @@ struct MessageBubble: View {
           // as turn chrome, not a primary action — the destructive part is
           // guarded by the scaffold's confirmation when retry would erase
           // anything beyond this stale assistant.
-          if message.nextTokenArena == nil && (!message.content.isEmpty || onRetry != nil) {
+          if message.nextTokenArena == nil && (!message.copyableContent.isEmpty || onRetry != nil) {
             HStack(spacing: 12) {
-              if !message.content.isEmpty {
-                CopyAnswerButton(text: message.content)
+              if !message.copyableContent.isEmpty {
+                CopyAnswerButton(text: message.copyableContent)
               }
               if let onRetry {
                 Button(action: onRetry) {

@@ -61,6 +61,16 @@ final class ChatMessageItemNoticeTests: XCTestCase {
     XCTAssertTrue(item.hasAttachmentContext)
   }
 
+  func test_item_lifts_probabilityLens_payload_and_copies_visible_answer() throws {
+    let content = """
+    {"kind":"probability_lens","text":"Visible answer","tokens":[],"average_entropy":1.2,"temperature":0.7,"top_p":0.9}
+    """
+    let item = ChatMessageItem(Message(role: "assistant", content: content))
+
+    XCTAssertEqual(item.probabilityLens?.averageEntropy, 1.2)
+    XCTAssertEqual(item.copyableContent, "Visible answer")
+  }
+
   func test_item_labels_tot_generation_performance_as_total_throughput() {
     let item = ChatMessageItem(
       role: .assistant,

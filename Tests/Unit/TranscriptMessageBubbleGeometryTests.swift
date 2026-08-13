@@ -117,6 +117,7 @@ final class TranscriptMessageBubbleGeometryTests: XCTestCase {
   }
 
   private static let metricMessageID = UUID(uuidString: "00000000-0000-0000-0000-000000000526")!
+  private static let lensMessageID = UUID(uuidString: "00000000-0000-0000-0000-000000000527")!
 
   private static let messages: [ChatMessageItem] = [
     ChatMessageItem(
@@ -135,6 +136,28 @@ final class TranscriptMessageBubbleGeometryTests: XCTestCase {
       id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
       role: .user,
       content: "Thanks — keep the rows separated."
+    ),
+    ChatMessageItem(
+      id: lensMessageID,
+      role: .assistant,
+      content: "lens payload",
+      probabilityLens: ProbabilityLensPayload(
+        kind: "probability_lens",
+        text: "The answer has several confidence levels.",
+        tokens: [
+          .init(id: 1, text: "The", probability: 0.82, entropy: 0.8,
+                alternatives: [.init(id: 1, text: "The", probability: 0.82)]),
+          .init(id: 2, text: " answer", probability: 0.41, entropy: 2.1,
+                alternatives: [.init(id: 2, text: " answer", probability: 0.41)]),
+          .init(id: 3, text: " has", probability: 0.12, entropy: 3.8,
+                alternatives: [.init(id: 3, text: " has", probability: 0.12)]),
+          .init(id: 4, text: " several confidence levels.", probability: nil, entropy: nil,
+                alternatives: []),
+        ],
+        averageEntropy: 2.23,
+        temperature: 0.7,
+        topP: 0.9
+      )
     ),
   ]
 }

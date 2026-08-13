@@ -193,6 +193,8 @@ fn parse_entry(wasm: &Path, manifest: &Path) -> Result<Entry> {
         .and_then(|v| v.as_str())
         .with_context(|| format!("{} has no [package].version", manifest.display()))?;
 
+    validate_parameter_types(&doc, manifest)?;
+
     let ratio = doc.get("ratio");
     let route = ratio
         .and_then(|r| r.get("route"))
@@ -255,6 +257,35 @@ fn parse_entry(wasm: &Path, manifest: &Path) -> Result<Entry> {
         aliases,
         snapshot_prefixes,
     })
+}
+
+/// Keep gateway discovery aligned with PIE's manifest parser. Without this,
+/// an invalid parameter type survives registry startup and fails only when a
+/// lazy inferlet is first installed, turning a packaging error into a user-
+/// visible 503.
+fn validate_parameter_types(doc: &toml::Value, manifest: &Path) -> Result<()> {
+    let Some(parameters) = doc.get("parameters").and_then(toml::Value::as_table) else {
+        return Ok(());
+    };
+    for (name, parameter) in parameters {
+        let parameter_type = parameter
+            .get("type")
+            .and_then(toml::Value::as_str)
+            .with_context(|| {
+                format!(
+                    "{} parameter {name:?} has no string type",
+                    manifest.display()
+                )
+            })?;
+        if !matches!(parameter_type, "string" | "int" | "float" | "bool") {
+            bail!(
+                "{} parameter {name:?} has unsupported type {parameter_type:?} \
+                 (known: string, int, float, bool)",
+                manifest.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Mirror of what the engine currently holds: `program id -> artifact digest`.
@@ -455,6 +486,20 @@ preload = true
             err.contains("chat-v1, tree-v1, json-unary-v1"),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn unsupported_pie_parameter_type_is_rejected_during_scan() {
+        let d = tmp();
+        write(
+            &d,
+            "x",
+            b"\0asm",
+            "[package]\nname=\"x\"\nversion=\"1\"\n[parameters]\nmax_tokens={type=\"integer\"}\n[ratio]\nprotocol=\"chat-v1\"\n",
+        );
+        let err = Registry::scan(&d).unwrap_err().to_string();
+        assert!(err.contains("unsupported type \"integer\""), "got: {err}");
+        assert!(err.contains("string, int, float, bool"), "got: {err}");
     }
 
     /// Validation must not partially apply — the caller keeps the old registry.

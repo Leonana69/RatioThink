@@ -287,7 +287,7 @@ final class LaunchSpecResolverTests: XCTestCase {
                    "helper-owned Resume/auto-relaunch starts must inherit the persisted Local API bind mode before engineHost.start(spec)")
   }
 
-  func test_resolveLauncherSpec_nextTokenArena_forces_gateway_backend() throws {
+  func test_resolveLauncherSpec_gatewayInferletProfiles_force_gateway_backend() throws {
     let store = try makeSeededDefaultStore()
     defer { store.stop() }
 
@@ -305,16 +305,21 @@ final class LaunchSpecResolverTests: XCTestCase {
       subprocessEnvironment: { [:] }
     )
 
-    guard case .success(let spec) = resolver.resolveLauncherSpec(
-      profileID: ProfileStore.nextTokenArenaProfileID,
-      chatBackend: .daemon
-    ) else {
-      return XCTFail("Next Token Arena built-in profile must resolve")
+    for profileID in [
+      ProfileStore.nextTokenArenaProfileID,
+      ProfileStore.probabilityLensProfileID,
+    ] {
+      guard case .success(let spec) = resolver.resolveLauncherSpec(
+        profileID: profileID,
+        chatBackend: .daemon
+      ) else {
+        return XCTFail("gateway inferlet profile \(profileID) must resolve")
+      }
+      XCTAssertEqual(spec.inferletNameAtVersion, "chat-apc@0.1.0",
+                     "the boot inferlet remains chat-apc; only the HTTP backend changes")
+      XCTAssertEqual(spec.chatBackend, .gateway,
+                     "\(profileID) must not depend on RATIO_CHAT_BACKEND=gateway")
     }
-    XCTAssertEqual(spec.inferletNameAtVersion, "chat-apc@0.1.0",
-                   "the boot inferlet remains chat-apc; only the HTTP backend changes")
-    XCTAssertEqual(spec.chatBackend, .gateway,
-                   "Next Token Arena must not depend on RATIO_CHAT_BACKEND=gateway")
   }
 
   func test_default_helper_bind_mode_reads_shared_app_persisted_preference() throws {

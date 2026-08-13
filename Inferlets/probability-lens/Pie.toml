@@ -1,0 +1,21 @@
+[package]
+name = "probability-lens"
+version = "0.1.0"
+description = "Generate an answer with confidence and top-token alternatives for every visible span."
+authors = ["RatioThink"]
+
+[runtime]
+core = "^0.2.0"
+
+[parameters]
+model = {type = "string", description = "engine-registered model id"}
+temperature = {type = "float", optional = true, description = "sampling temperature"}
+top_p = {type = "float", optional = true, description = "top-p sampling"}
+max_tokens = {type = "int", optional = true, description = "maximum generated tokens"}
+
+[ratio]
+route = "probability-lens"
+aliases = ["lens"]
+protocol = "chat-v1"
+preload = false
+snapshot_prefixes = ["conv/"]

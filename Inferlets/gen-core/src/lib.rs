@@ -20,10 +20,34 @@ use inferlet::{
     inference::SlotOutput,
     model::Model,
     runtime,
-    sample::Sampler,
+    sample::{Distribution, Entropy, Sampler},
 };
 use ratio_wire::{Event, EventSink, GenResult};
 use schema::ChatRequest;
+
+/// One likely alternative at a generated token position.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TokenAlternative {
+    pub id: u32,
+    pub text: String,
+    pub probability: f32,
+}
+
+/// Probability telemetry for one visible generated span.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TokenObservation {
+    pub id: u32,
+    pub text: String,
+    pub probability: Option<f32>,
+    pub entropy: Option<f32>,
+    pub alternatives: Vec<TokenAlternative>,
+}
+
+/// A normal chat result plus optional per-token probability observations.
+pub struct ObservedChat {
+    pub result: GenResult,
+    pub tokens: Vec<TokenObservation>,
+}
 
 /// A failure that happened before the commit point. The caller turns the code
 /// into an HTTP status; `gen-core` never chooses one.
@@ -90,6 +114,24 @@ pub async fn run_chat(
     req: &ChatRequest,
     sink: &dyn EventSink,
 ) -> Result<GenResult, GenError> {
+    run_chat_impl(req, sink, None).await.map(|observed| observed.result)
+}
+
+/// Run a chat turn while probing the distribution and entropy used to choose
+/// each visible token. Ordinary chat calls [`run_chat`] and pays no probe cost.
+pub async fn run_chat_with_token_observations(
+    req: &ChatRequest,
+    sink: &dyn EventSink,
+    top_k: u32,
+) -> Result<ObservedChat, GenError> {
+    run_chat_impl(req, sink, Some(top_k.max(1))).await
+}
+
+async fn run_chat_impl(
+    req: &ChatRequest,
+    sink: &dyn EventSink,
+    lens_top_k: Option<u32>,
+) -> Result<ObservedChat, GenError> {
     // ---- pre-commit: nothing has been emitted yet ----
     let models = runtime::models();
     if !models.iter().any(|m| m == &req.model) {
@@ -117,7 +159,9 @@ pub async fn run_chat(
         .map_err(|e| GenError::new(classify_engine_error(&e), e))?;
     // The cue is mode-specific, so it goes on the fork — never into the shared
     // boundary, or ToT and chat could never agree on a name.
-    ctx.append(&prompt::generation_cue(&model, req.cue_mode()));
+    let generation_cue = prompt::generation_cue(&model, req.cue_mode());
+    ctx.append(&generation_cue);
+    let first_probe_index = generation_cue.len().saturating_sub(1) as u32;
 
     // PARITY: read BEFORE the generator runs. `Generator::next` takes the
     // buffer, so after the first step this expression yields a different
@@ -149,6 +193,12 @@ pub async fn run_chat(
         .generate(resolve_sampler(req.temperature_or_default(), req.top_p_or_default()))
         .max_tokens(max_tokens)
         .stop(&stop_tokens);
+    // A probability observation describes one sampled position. Host-driven
+    // speculation may accept several positions from one pass but exposes only
+    // one stable per-step probe slot, so lens mode uses single-token steps.
+    if lens_top_k.is_some() {
+        stream = stream.disable_system_speculation();
+    }
 
     // Cooperative cancellation. Created ONCE — each `session::receive()` mints
     // a fresh consumer of the same per-process topic, so per-iteration calls
@@ -164,9 +214,11 @@ pub async fn run_chat(
     let mut in_reasoning = false;
     let mut reasoning_streamed = String::new();
     let mut content = String::new();
+    let mut token_observations = Vec::new();
+    let mut first_generation_step = true;
 
     let (outcome, error_diag): (Outcome, Option<(&str, String)>) = loop {
-        let step = match stream.next() {
+        let mut step = match stream.next() {
             // PARITY: distinguish the max_tokens cap from a natural stop using
             // the GENERATOR's counter, not the locally accumulated one — they
             // can diverge, and the local one can flip `length` into `stop`.
@@ -181,6 +233,20 @@ pub async fn run_chat(
             Ok(Some(s)) => s,
             Err(e) => break (Outcome::Aborted, Some((classify_engine_error(&e.to_string()), e.to_string()))),
         };
+        let observation_handles = lens_top_k.map(|top_k| {
+            let probe_index = if first_generation_step { first_probe_index } else { 0 };
+            let temperature = req.temperature_or_default();
+            let distribution = step.probe(
+                probe_index,
+                Distribution {
+                    temperature: if temperature <= 0.0 { 1.0 } else { temperature },
+                    k: top_k,
+                },
+            );
+            let entropy = step.probe(probe_index, Entropy);
+            (distribution, entropy)
+        });
+        first_generation_step = false;
         // Race the forward pass against the cancel signal. Whichever resolves
         // first wins; if cancel wins we drop the in-flight execute future — the
         // pass is already submitted host-side and we are aborting regardless.
@@ -202,6 +268,30 @@ pub async fn run_chat(
         if forward_pass_starved(&out.raw().slots) {
             break (Outcome::Aborted, Some((STARVED_CODE, STARVED_MESSAGE.to_string())));
         }
+        let pending_observation = observation_handles.and_then(|(distribution, entropy)| {
+            let id = *out.tokens.first()?;
+            let (ids, probabilities) = out.distribution(distribution).unwrap_or((&[], &[]));
+            let alternatives: Vec<TokenAlternative> = ids
+                .iter()
+                .zip(probabilities.iter())
+                .map(|(&id, &probability)| TokenAlternative {
+                    id,
+                    text: decoded_token(&model, id),
+                    probability,
+                })
+                .collect();
+            let probability = alternatives
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .map(|candidate| candidate.probability);
+            Some(TokenObservation {
+                id,
+                text: String::new(),
+                probability,
+                entropy: out.entropy(entropy),
+                alternatives,
+            })
+        });
         // NOTE: no local token accumulator. `stream.tokens_generated()` is
         // authoritative for both the `length` cutoff and the usage block;
         // a second counter can diverge and flip `length` into `stop`.
@@ -243,6 +333,10 @@ pub async fn run_chat(
                 if !visible.is_empty() {
                     content.push_str(visible);
                     sink.emit(Event::ContentDelta { text: visible.to_string() });
+                    if let Some(mut observation) = pending_observation {
+                        observation.text = visible.to_string();
+                        token_observations.push(observation);
+                    }
                 }
             }
             // PARITY: the payload is DELIBERATELY discarded. `Done(s)` carries
@@ -317,17 +411,25 @@ pub async fn run_chat(
         }
     }
 
-    Ok(GenResult {
-        content,
-        reasoning: (!reasoning_streamed.is_empty()).then_some(reasoning_streamed),
-        tool_calls: Vec::new(),
-        finish_reason: Some(outcome.finish_reason()),
-        prompt_tokens,
-        completion_tokens: usage_completion,
-        context_window,
-        boundary_found: canonical.outcome.found,
-        reused_tokens: canonical.outcome.reused_tokens as u32,
+    Ok(ObservedChat {
+        result: GenResult {
+            content,
+            reasoning: (!reasoning_streamed.is_empty()).then_some(reasoning_streamed),
+            tool_calls: Vec::new(),
+            finish_reason: Some(outcome.finish_reason()),
+            prompt_tokens,
+            completion_tokens: usage_completion,
+            context_window,
+            boundary_found: canonical.outcome.found,
+            reused_tokens: canonical.outcome.reused_tokens as u32,
+        },
+        tokens: token_observations,
     })
+}
+
+fn decoded_token(model: &Model, id: u32) -> String {
+    let text = model.tokenizer().decode(&[id]).unwrap_or_default();
+    if text.is_empty() { format!("<token:{id}>") } else { text }
 }
 
 /// Thin wrapper over the SDK reasoning decoder so the loop reads uniformly.

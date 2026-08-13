@@ -105,6 +105,40 @@ final class ChatSendControllerTests: XCTestCase {
     XCTAssertEqual(req.messages.first?.content, "hi")
   }
 
+  func test_send_unwraps_probabilityLens_payload_in_assistant_history() async throws {
+    let container = try RatioThinkModelContainer.makeInMemory()
+    let context = ModelContext(container)
+    let chat = Chat()
+    context.insert(chat)
+    chat.messages.append(Message(
+      role: "user", content: "First question", ts: Date(timeIntervalSinceReferenceDate: 1)))
+    chat.messages.append(Message(
+      role: "assistant",
+      content: """
+      {"kind":"probability_lens","text":"Visible answer","tokens":[],"average_entropy":null,"temperature":0.7,"top_p":0.9}
+      """,
+      ts: Date(timeIntervalSinceReferenceDate: 2)))
+    chat.messages.append(Message(
+      role: "user", content: "Follow-up", ts: Date(timeIntervalSinceReferenceDate: 3)))
+    try context.save()
+
+    let engine = ImmediateChatEngine(events: [.finish(reason: .stop)])
+    let controller = ChatSendController()
+    controller.send(
+      chat: chat,
+      context: context,
+      engine: engine,
+      modelLoadCenter: ModelLoadCenter(),
+      persistenceStatus: PersistenceStatus(),
+      options: ChatSendRequestOptions(
+        modelID: "m", inferletRoute: ProfileStore.probabilityLensRoute)
+    )
+    try await waitUntil("stream finishes") { !controller.isInFlight }
+
+    let messages = try XCTUnwrap(engine.requests.first?.messages)
+    XCTAssertEqual(messages.map(\.content), ["First question", "Visible answer", "Follow-up"])
+  }
+
   func test_send_builds_request_streams_assistant_and_routes_model_meta() async throws {
     let container = try RatioThinkModelContainer.makeInMemory()
     let context = ModelContext(container)

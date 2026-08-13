@@ -32,6 +32,9 @@ struct ChatMessageItem: Identifiable, Equatable {
   /// Decoded Next Token Arena payload. Nil for ordinary chat and while an arena
   /// JSON delta is incomplete.
   var nextTokenArena: NextTokenArenaRound?
+  /// Decoded Probability Lens answer and token telemetry. Nil for ordinary
+  /// chat and while the structured JSON delta is incomplete.
+  var probabilityLens: ProbabilityLensPayload?
   /// Engine `finish_reason` for a completed turn (`"stop"`, `"length"`,
   /// `"cancelled"`, …), or `nil` while the turn is still streaming. Lets
   /// `MessageBubble` surface a truncated-before-answer turn instead of a
@@ -51,6 +54,7 @@ struct ChatMessageItem: Identifiable, Equatable {
     tot: ToTTree? = nil,
     bestOfN: BestOfNRound? = nil,
     nextTokenArena: NextTokenArenaRound? = nil,
+    probabilityLens: ProbabilityLensPayload? = nil,
     finishReason: String? = nil,
     generationPerformance: GenerationMetrics? = nil,
     hasAttachmentContext: Bool = false
@@ -62,6 +66,7 @@ struct ChatMessageItem: Identifiable, Equatable {
     self.tot = tot
     self.bestOfN = bestOfN
     self.nextTokenArena = nextTokenArena
+    self.probabilityLens = probabilityLens
     self.finishReason = finishReason
     self.generationPerformance = generationPerformance
     self.hasAttachmentContext = hasAttachmentContext
@@ -90,6 +95,10 @@ struct ChatMessageItem: Identifiable, Equatable {
     }
     return "\(rounded) tok/s"
   }
+
+  var copyableContent: String {
+    probabilityLens?.text ?? content
+  }
 }
 
 extension ChatMessageItem {
@@ -115,10 +124,14 @@ extension ChatMessageItem {
     let nextTokenArena = role == .assistant
       ? NextTokenArenaRound.decode(from: message.content)
       : nil
+    let probabilityLens = role == .assistant
+      ? ProbabilityLensPayload.decode(from: message.content)
+      : nil
     self.init(
       id: message.id, role: role, content: message.content,
       reasoning: message.reasoning, tot: tot, bestOfN: bestOfN,
       nextTokenArena: nextTokenArena,
+      probabilityLens: probabilityLens,
       finishReason: message.finishReason,
       generationPerformance: message.generationPerformance,
       hasAttachmentContext: !(message.extractedAttachmentText?.isEmpty ?? true))

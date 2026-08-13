@@ -2301,7 +2301,7 @@ final class ProfileStoreTests: XCTestCase {
 
   // MARK: - #702 base/user two-layer
 
-  /// The base layer yields all four built-ins even when the directory scan
+  /// The base layer yields every built-in even when the directory scan
   /// fails (dir unreadable) — base entries are in-code, not scanned.
   func test_base_layer_present_when_directory_scan_fails() throws {
     let missing = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
@@ -2309,7 +2309,7 @@ final class ProfileStoreTests: XCTestCase {
     let (entries, scanErr) = ProfileStore.effectiveScan(directory: missing)
     XCTAssertNotNil(scanErr, "scanning a missing dir must report a scan error")
     let ids = Set(entries.compactMap { $0.profile?.id })
-    XCTAssertEqual(ids, ["chat", "next-token-arena", "tree-of-thought", "json-think", "best-of-n"],
+    XCTAssertEqual(ids, ["chat", "next-token-arena", "probability-lens", "tree-of-thought", "json-think", "best-of-n"],
                    "all shipped base built-ins must be present even when the scan fails")
   }
 

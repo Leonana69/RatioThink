@@ -370,8 +370,9 @@ struct ChatScaffoldView: View {
   /// dropped) before the shared, app-scoped engine is touched.
   private func reloadEngineIfProfileSwapChangesModel(to newProfileID: String) {
     var ignored = false  // F4: the swap path owns no persistent in-flight flag
+    let newProfile = profileStore.profile(forProfileID: newProfileID)
     let requiresProfileBoundRuntime =
-      profileStore.profile(forProfileID: newProfileID)?.nextTokenArena != nil
+      newProfile?.nextTokenArena != nil || newProfile?.probabilityLens != nil
     let outcome = Self.profileSwapEngineOutcome(
       newProfileID: newProfileID,
       chatModelID: chats.first?.modelID,
@@ -1286,8 +1287,13 @@ struct ChatScaffoldView: View {
     // engine (#527).
     guard let modelID = resolvedModelIDForSend(for: chat) else { return }
     let selectedProfile = profileStore.profile(forProfileID: viewModel.selectedProfileID)
-    let isNextTokenArena = selectedProfile?.nextTokenArena != nil
-    let inferletRoute: String? = isNextTokenArena ? ProfileStore.nextTokenArenaRoute : nil
+    let inferletRoute: String? = if selectedProfile?.probabilityLens != nil {
+      ProfileStore.probabilityLensRoute
+    } else if selectedProfile?.nextTokenArena != nil {
+      ProfileStore.nextTokenArenaRoute
+    } else {
+      nil
+    }
     // Abandon cleanup (#690): starting a new turn orphans any uncommitted
     // Best-of-N round in this chat — free its candidate snapshots now so a long
     // session cannot accumulate unpicked KV. Runs before this turn is added, so

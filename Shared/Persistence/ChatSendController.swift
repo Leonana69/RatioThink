@@ -724,6 +724,10 @@ public final class ChatSendController: ObservableObject {
   }
 
   private static func foldedContent(for message: Message, role: ChatMessage.Role) -> String {
+    if role == .assistant,
+       let lens = ProbabilityLensPayload.decode(from: message.content) {
+      return lens.text
+    }
     guard role == .user,
           let attachmentText = message.extractedAttachmentText,
           !attachmentText.isEmpty else {
