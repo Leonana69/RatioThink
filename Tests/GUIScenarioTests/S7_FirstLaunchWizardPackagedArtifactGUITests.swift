@@ -56,7 +56,7 @@ final class S7_FirstLaunchWizardPackagedArtifactGUITests: XCTestCase {
     // : no model step — login registration leads straight to
     // the main shell.
     app.buttons["Open Rational"].click()
-    XCTAssertTrue(app.buttons["chats.newButton"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.menuButtons["chats.newButton"].waitForExistence(timeout: 5))
 
     app.terminate()
 
@@ -74,7 +74,7 @@ final class S7_FirstLaunchWizardPackagedArtifactGUITests: XCTestCase {
     relaunched.activate()
     try assertLaunchedArtifact(probePath: relaunchProbePath, expectedAppPath: appPath)
 
-    XCTAssertTrue(relaunched.buttons["chats.newButton"].waitForExistence(timeout: 5))
+    XCTAssertTrue(relaunched.menuButtons["chats.newButton"].waitForExistence(timeout: 5))
     XCTAssertFalse(relaunched.staticTexts["Welcome to Rational"].waitForExistence(timeout: 2),
                    "First-launch wizard reappeared after completion")
   }

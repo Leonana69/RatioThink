@@ -5,19 +5,16 @@ import ServiceManagement
 /// Simplified chat shell: primary navigation plus the chat list live in the
 /// left column of a two-column split view; the detail column hosts every
 /// section's main view. Sidebar visibility remains wired through `WindowState`.
-/// New chats start from the titlebar new-chat button (the app-name branding was
-/// removed from that spot).
+/// New chats start from the fixed first row in the conversation list.
 struct RootView: View {
   @EnvironmentObject private var windowState: WindowState
   @EnvironmentObject private var persistenceStatus: PersistenceStatus
   /// #512: empty-chat pruning needs the store — runs on selection change
   /// (prune the chat the user just left) and once at launch (reconcile
-  /// shells left behind by quit or by pre-prune builds). Also backs the
-  /// titlebar new-chat affordance.
+  /// shells left behind by quit or by pre-prune builds).
   @Environment(\.modelContext) private var modelContext
-  /// #460: the titlebar new-chat inherits the active profile + concrete model
-  /// from the chat the user is currently in, so a new chat keeps the same
-  /// context instead of resetting to the bare default.
+  /// Keeps the native titlebar in sync with the selected conversation,
+  /// including automatic and manual title changes.
   @Query(sort: \Chat.updatedAt, order: .reverse) private var chats: [Chat]
   /// Engine lifecycle + in-flight load, folded into the unified
   /// indicator state that gates the engine-error banner. Both are
@@ -103,36 +100,10 @@ struct RootView: View {
         )
         .navigationSplitViewColumnWidth(min: 480, ideal: 720)
       }
-      // Branding removed from the titlebar (was `.navigationTitle("Rational")`);
-      // an emphasized new-chat button occupies that spot. Empty title keeps the
-      // titlebar clear rather than showing the product name as a label.
-      .navigationTitle("")
-      .toolbar {
-        ToolbarItem(placement: .navigation) {
-          Menu {
-            Button {
-              createChat()
-            } label: {
-              Label("New Chat", systemImage: "text.bubble")
-            }
-            Button {
-              createNextTokenArenaChat()
-            } label: {
-              Label("Next Token Arena", systemImage: "gamecontroller")
-            }
-            Button {
-              createProbabilityLensChat()
-            } label: {
-              Label("Probability Lens", systemImage: "eye")
-            }
-          } label: {
-            Image(systemName: "plus")
-          }
-          .menuStyle(.button)
-          .help("New")
-          .accessibilityIdentifier("chats.newButton")
-        }
-      }
+      // The new-conversation menu now lives in the chat list. Reuse its former
+      // titlebar space for the selected conversation instead of leaving an
+      // empty strip above the detail surface.
+      .navigationTitle(selectedConversationTitle)
     }
     .autoDismissActionFeedback(statusBannerActionFeedback) {
       statusBannerActionFeedback = nil
@@ -168,38 +139,10 @@ struct RootView: View {
     }
   }
 
-  /// Titlebar new-chat affordance (occupies the spot the app name used to
-  /// render). Creates a chat, switches to the Chats section, and selects it so
-  /// the new conversation opens regardless of which section was active. Routes
-  /// through the same `ChatCreation` seam as the list/empty-state buttons so the
-  /// save + #460 profile/model inheritance stay in one place.
-  private func createChat() {
-    createChat(profileID: ProfileStore.defaultProfileID,
-               contextLabel: "RootView.newChat")
-  }
-
-  private func createNextTokenArenaChat() {
-    createChat(profileID: ProfileStore.nextTokenArenaProfileID,
-               contextLabel: "RootView.nextTokenArenaChat")
-  }
-
-  private func createProbabilityLensChat() {
-    createChat(profileID: ProfileStore.probabilityLensProfileID,
-               contextLabel: "RootView.probabilityLensChat")
-  }
-
-  private func createChat(profileID: String, contextLabel: String) {
-    let source = windowState.selectedItemID.flatMap { id in chats.first { $0.id == id } }
-    if let id = ChatCreation.create(
-      in: modelContext,
-      persistenceStatus: persistenceStatus,
-      contextLabel: contextLabel,
-      profileID: profileID,
-      modelID: source?.modelID
-    ) {
-      windowState.selectedSection = .chats
-      windowState.selectedItemID = id
-    }
+  private var selectedConversationTitle: String {
+    guard windowState.selectedSection == .chats,
+          let selectedID = windowState.selectedItemID else { return "" }
+    return chats.first(where: { $0.id == selectedID })?.title ?? ""
   }
 
   /// #411: run the once-per-launch update check. Skipped on test/automation

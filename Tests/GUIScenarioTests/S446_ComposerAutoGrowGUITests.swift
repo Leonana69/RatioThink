@@ -27,9 +27,10 @@ final class S446_ComposerAutoGrowGUITests: XCTestCase {
     XCTAssert(app.wait(for: .runningForeground, timeout: 10))
     app.activate()
 
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10), "New Chat button missing")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     // A no-model launch gate may be presented; dismiss it so the composer is
     // interactable (we are not exercising the gate here).

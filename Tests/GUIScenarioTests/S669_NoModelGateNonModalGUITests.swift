@@ -52,9 +52,10 @@ final class S669_NoModelGateNonModalGUITests: XCTestCase {
     XCTAssert(app.wait(for: .runningForeground, timeout: 10))
     app.activate()
 
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10), "New Chat button missing")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     let composer = app.descendants(matching: .any)
       .matching(identifier: "composer.text")

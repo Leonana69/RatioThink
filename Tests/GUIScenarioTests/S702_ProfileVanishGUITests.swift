@@ -87,10 +87,7 @@ final class S702_ProfileVanishGUITests: XCTestCase {
               "Rational.app did not reach runningForeground")
     app.activate()
 
-    let newChat = app.buttons["chats.newButton"]
-    XCTAssertTrue(newChat.waitForExistence(timeout: 10),
-                  "New Chat button missing; app tree: \(app.debugDescription)")
-    newChat.click()
+    openFreshChat(in: app)
 
     // Open the toolbar profile picker and wait for the VALID `chat` row, which
     // both proves the menu opened AND that the picker renders parseable

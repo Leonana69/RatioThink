@@ -173,9 +173,10 @@ final class S327_EngineStatusIndicatorGUITests: XCTestCase {
               "Pie.app did not reach runningForeground")
     app.activate()
     // A chat surface mounts the ContentToolbar (which hosts the pip).
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     if newChat.waitForExistence(timeout: 10) {
       newChat.click()
+      app.menuItems["New Chat"].click()
     }
     return app
   }

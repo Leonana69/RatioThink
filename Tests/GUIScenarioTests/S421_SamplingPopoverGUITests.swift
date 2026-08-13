@@ -44,9 +44,7 @@ final class S421_SamplingPopoverGUITests: XCTestCase {
               "Rational.app did not reach runningForeground")
     app.activate()
 
-    let newChat = app.buttons["chats.newButton"]
-    XCTAssertTrue(newChat.waitForExistence(timeout: 10), "New Chat button missing")
-    newChat.click()
+    openFreshChat(in: app)
 
     let params = app.buttons["toolbar.params"]
     XCTAssertTrue(params.waitForExistence(timeout: 10),

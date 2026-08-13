@@ -4,8 +4,8 @@ import XCTest
 ///
 /// GUI-only. Asserts against FINAL design strings — the sidebar shows the nav
 /// labels `Chats`, `Search`, and `API Endpoints` (the last mirrors the live
-/// engine endpoint via `LocalAPIView`, #422). The titlebar branding label was
-/// removed and replaced by an emphasized new-chat button (`chats.newButton`).
+/// engine endpoint via `LocalAPIView`, #422). The titlebar branding label is
+/// absent and the conversation list begins with the new menu (`chats.newButton`).
 /// Conversation search is a sibling sidebar destination (a `Search` nav row →
 /// `ConversationSearchView` in the detail column), NOT an inline chat-list
 /// filter. The no-selection landing shows the `Start Chat` CTA. Settings opens
@@ -45,12 +45,12 @@ final class S5_AppWindowShellGUITests: XCTestCase {
 
     let window = app.windows.firstMatch
     XCTAssert(window.waitForExistence(timeout: 5), "main window missing")
-    // Branding removed from the titlebar; an emphasized new-chat button took
-    // that spot, so the titlebar no longer reads the product name as a label.
+    // Branding remains removed from the titlebar, which no longer reads the
+    // product name as a label.
     XCTAssertNotEqual(window.title, "Rational",
                       "titlebar branding should be gone; title was '\(window.title)'")
-    XCTAssertTrue(app.buttons["chats.newButton"].waitForExistence(timeout: 5),
-                  "titlebar New Chat affordance missing")
+    XCTAssertTrue(app.menuButtons["chats.newButton"].waitForExistence(timeout: 5),
+                  "conversation-list new menu missing")
 
     // Sidebar (col 1) — final nav vocabulary.
     XCTAssertTrue(

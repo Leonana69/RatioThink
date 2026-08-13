@@ -38,8 +38,8 @@ final class S1855_GatewayModeSwitchGUITests: XCTestCase {
     configureCompletedFirstLaunch(app, suiteName: stablePreferenceSuiteName(pieHome))
     defer { app.terminate() }
 
-    app.launchActivated(landmark: { $0.buttons["chats.newButton"] })
-    app.buttons["chats.newButton"].click()
+    app.launchActivated(landmark: { $0.menuButtons["chats.newButton"] })
+    openFreshChat(in: app)
 
     try send("Reply briefly: name a color.", expectingAssistant: 1, in: app)
     try selectProfile("tree-of-thought", title: "Tree of Thought", in: app)

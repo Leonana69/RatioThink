@@ -67,7 +67,7 @@ final class S7_FirstLaunchWizardGUITests: XCTestCase {
                    "first-launch wizard must not include a model download step")
 
     app.buttons["Open Rational"].click()
-    XCTAssertTrue(app.buttons["chats.newButton"].waitForExistence(timeout: 5),
+    XCTAssertTrue(app.menuButtons["chats.newButton"].waitForExistence(timeout: 5),
                   "main shell must open after the two-step wizard completes")
   }
 
@@ -99,7 +99,7 @@ final class S7_FirstLaunchWizardGUITests: XCTestCase {
 
     XCTAssert(app.wait(for: .runningForeground, timeout: 5))
     app.activate()
-    XCTAssertTrue(app.buttons["chats.newButton"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.menuButtons["chats.newButton"].waitForExistence(timeout: 5))
 
     let menuBar = app.menuBars.firstMatch
     XCTAssertTrue(menuBar.waitForExistence(timeout: 5), "main menu bar missing")

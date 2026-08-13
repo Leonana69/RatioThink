@@ -76,10 +76,11 @@ final class S204_ChatSendGUITests: XCTestCase {
   }
 
   private func createChatAndSend(_ prompt: String, in app: XCUIApplication) throws {
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10),
                   "New Chat button missing; app tree: \(app.debugDescription)")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     let composer = app.descendants(matching: .any)
       .matching(identifier: "composer.text").firstMatch

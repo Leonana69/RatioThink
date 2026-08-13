@@ -51,7 +51,7 @@ final class S496_HelperOverlayRemovedGUITests: XCTestCase {
     // an empty `Disabled` tree. Re-assert frontmost and wait for a live control
     // so the assertions below don't race a startup focus blip.
     app.activate()
-    _ = waitForHittable(app.buttons["chats.newButton"], timeout: 10)
+    _ = waitForHittable(app.menuButtons["chats.newButton"], timeout: 10)
     return app
   }
 
@@ -74,7 +74,7 @@ final class S496_HelperOverlayRemovedGUITests: XCTestCase {
   @MainActor
   private func assertWindowIsInteractive(_ app: XCUIApplication, context: String) {
     // Sidebar new-chat button responds (the window is not locked).
-    let newButton = app.buttons["chats.newButton"]
+    let newButton = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newButton.waitForExistence(timeout: 8), "[\(context)] sidebar new-chat button missing")
     XCTAssertTrue(waitForHittable(newButton, timeout: 12),
       "[\(context)] sidebar New Chat must be HITTABLE; app tree: \(app.debugDescription)")
@@ -115,7 +115,7 @@ final class S496_HelperOverlayRemovedGUITests: XCTestCase {
     // Accessibility gate + the core regression's first proof: the sidebar
     // new-chat button is hittable while the helper is unreachable (before the
     // fix the whole window — including this — was non-interactive).
-    let newButton = app.buttons["chats.newButton"]
+    let newButton = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newButton.waitForExistence(timeout: 10), "sidebar new-chat button missing")
     XCTAssertTrue(waitForHittable(newButton, timeout: 10),
       "window must be interactive (sidebar hittable) while the helper is unreachable; app tree: \(app.debugDescription)")

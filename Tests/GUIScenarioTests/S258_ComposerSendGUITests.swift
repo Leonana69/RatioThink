@@ -40,7 +40,7 @@ final class S258_ComposerSendGUITests: XCTestCase {
     configure(app, pieHome: pieHome, baseURL: baseURL, model: model)
     defer { app.terminate() }
     // Launch + win key reliably even on a later not-key launch (#545).
-    app.launchActivated(landmark: { $0.buttons["chats.newButton"] })
+    app.launchActivated(landmark: { $0.menuButtons["chats.newButton"] })
 
     try createChatAndSend(prompt, in: app)
     guard waitForAssistantEchoInAssistantBubble(visibleAssistantEcho, in: app, timeout: 120) else {
@@ -53,7 +53,7 @@ final class S258_ComposerSendGUITests: XCTestCase {
     let relaunched = XCUIApplication(bundleIdentifier: "com.ratiothink.app")
     configure(relaunched, pieHome: pieHome, baseURL: baseURL, model: model)
     defer { relaunched.terminate() }
-    relaunched.launchActivated(landmark: { $0.buttons["chats.newButton"] })
+    relaunched.launchActivated(landmark: { $0.menuButtons["chats.newButton"] })
 
     selectPersistedChat(titled: prompt, in: relaunched)
     guard waitForAssistantEchoInAssistantBubble(visibleAssistantEcho, in: relaunched, timeout: 15) else {
@@ -78,10 +78,7 @@ final class S258_ComposerSendGUITests: XCTestCase {
   }
 
   private func createChatAndSend(_ prompt: String, in app: XCUIApplication) throws {
-    let newChat = app.buttons["chats.newButton"]
-    XCTAssertTrue(newChat.waitForExistence(timeout: 10),
-                  "New Chat button missing; app tree: \(app.debugDescription)")
-    newChat.click()
+    openFreshChat(in: app)
 
     let composer = app.descendants(matching: .any)
       .matching(identifier: "composer.text")

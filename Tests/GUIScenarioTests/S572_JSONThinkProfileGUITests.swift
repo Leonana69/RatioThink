@@ -50,12 +50,9 @@ final class S572_JSONThinkProfileGUITests: XCTestCase {
     configure(app, pieHome: pieHome, baseURL: baseURL, model: model)
     defer { app.terminate() }
     // Launch + win key reliably even on a later not-key launch (#545).
-    app.launchActivated(landmark: { $0.buttons["chats.newButton"] })
+    app.launchActivated(landmark: { $0.menuButtons["chats.newButton"] })
 
-    let newChat = app.buttons["chats.newButton"]
-    XCTAssertTrue(newChat.waitForExistence(timeout: 10),
-                  "New Chat button missing; app tree: \(app.debugDescription)")
-    newChat.click()
+    openFreshChat(in: app)
 
     // Reconciliation barrier before swapping profiles (mirror the PASSING
     // real-engine profile GUI harness): the toolbar VALUE settles to the concrete served slug only after

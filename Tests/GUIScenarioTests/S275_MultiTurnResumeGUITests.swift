@@ -98,10 +98,7 @@ final class S275_MultiTurnResumeGUITests: XCTestCase {
   }
 
   private func createChatAndSend(_ prompt: String, in app: XCUIApplication) throws {
-    let newChat = app.buttons["chats.newButton"]
-    XCTAssertTrue(newChat.waitForExistence(timeout: 10),
-                  "New Chat button missing; app tree: \(app.debugDescription)")
-    newChat.click()
+    openFreshChat(in: app)
     try sendPrompt(prompt, in: app)
   }
 

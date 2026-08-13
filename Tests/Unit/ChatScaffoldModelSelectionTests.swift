@@ -987,7 +987,8 @@ final class ChatScaffoldModelSelectionTests: XCTestCase {
       ChatScaffoldView.deferredEngineMutationResolution(
         queued: queued,
         currentChatID: chatID,
-        currentTargetModelID: "org/C"),
+        currentTargetModelID: "org/C",
+        currentProfileID: "chat"),
       .drop,
       "a queued Load for A must not restart the engine after the chat target moves to C")
   }
@@ -1011,7 +1012,8 @@ final class ChatScaffoldModelSelectionTests: XCTestCase {
       ChatScaffoldView.deferredEngineMutationResolution(
         queued: queuedC,
         currentChatID: chatID,
-        currentTargetModelID: "org/C"),
+        currentTargetModelID: "org/C",
+        currentProfileID: "chat"),
       .run(modelID: "org/C"))
   }
 

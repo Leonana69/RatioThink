@@ -56,9 +56,7 @@ final class S507_StreamContinuityGUITests: XCTestCase {
                   "partial assistant delta '\(holdToken)' never rendered; app tree: \(app.debugDescription)")
 
     // Switch to a new chat MID-STREAM. #507: this must NOT cancel the stream.
-    let newChat = app.buttons["chats.newButton"]
-    XCTAssertTrue(newChat.waitForExistence(timeout: 5), "chats.newButton missing")
-    newChat.click()
+    openFreshChat(in: app)
     let composer = app.descendants(matching: .any).matching(identifier: "composer.text").firstMatch
     XCTAssertTrue(composer.waitForExistence(timeout: 5), "new chat composer missing after switch")
 
@@ -76,7 +74,7 @@ final class S507_StreamContinuityGUITests: XCTestCase {
     // 3) Return to the original chat: the bubble holds partial + released
     //    tail, persisted while unmounted. #512: the original is auto-titled
     //    from its first user message, so select it by that derived title
-    //    (the fresh chat keeps the "New Chat" placeholder).
+    //    (the fresh transient draft has no sidebar row).
     let originalRow = sidebarRow(titled: originalPrompt, in: app)
     XCTAssertTrue(originalRow.waitForExistence(timeout: 5),
                   "original chat row (auto-titled '\(originalPrompt)') missing; app tree: \(app.debugDescription)")
@@ -136,9 +134,7 @@ final class S507_StreamContinuityGUITests: XCTestCase {
     openFreshChat(in: app)
     for index in 1...chatCount {
       if index > 1 {
-        let newChat = app.buttons["chats.newButton"]
-        XCTAssertTrue(newChat.waitForExistence(timeout: 5), "chats.newButton missing")
-        newChat.click()
+        openFreshChat(in: app)
         let composer = app.descendants(matching: .any).matching(identifier: "composer.text").firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 5),
                       "chat \(index) composer missing; app tree: \(app.debugDescription)")

@@ -102,10 +102,11 @@ final class ReadmeScreenshotsGUITests: XCTestCase {
     defer { app.terminate() }
     Self.activate(app)
 
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10),
                   "New Chat button missing; app: \(app.debugDescription)")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     let modelControl = app.descendants(matching: .any)
       .matching(identifier: "toolbar.model").firstMatch
@@ -152,9 +153,10 @@ final class ReadmeScreenshotsGUITests: XCTestCase {
     defer { app.terminate() }
     Self.activate(app)
 
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10), "New Chat button missing")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     let modelControl = app.descendants(matching: .any)
       .matching(identifier: "toolbar.model").firstMatch
@@ -182,10 +184,11 @@ final class ReadmeScreenshotsGUITests: XCTestCase {
   // MARK: - Steps
 
   private func createChatAndSend(_ prompt: String, in app: XCUIApplication) throws {
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10),
                   "New Chat button missing; app: \(app.debugDescription)")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     let composer = app.descendants(matching: .any)
       .matching(identifier: "composer.text").firstMatch

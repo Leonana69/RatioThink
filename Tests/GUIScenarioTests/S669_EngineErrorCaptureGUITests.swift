@@ -64,9 +64,10 @@ final class S669_EngineErrorCaptureGUITests: XCTestCase {
     XCTAssertTrue(banner.waitForExistence(timeout: 10),
                   "Tier-2 engine/helper error banner (status.banner) missing; app tree: \(app.debugDescription)")
 
-    let newChat = app.buttons["chats.newButton"]
+    let newChat = app.menuButtons["chats.newButton"]
     XCTAssertTrue(newChat.waitForExistence(timeout: 10), "New Chat button missing")
     newChat.click()
+    app.menuItems["New Chat"].click()
 
     let composer = app.descendants(matching: .any)
       .matching(identifier: "composer.text").firstMatch

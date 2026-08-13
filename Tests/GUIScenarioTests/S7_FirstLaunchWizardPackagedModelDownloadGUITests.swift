@@ -111,7 +111,7 @@ final class S7_FirstLaunchWizardPackagedModelDownloadGUITests: XCTestCase {
     // The relaunch lands in the main shell, not the wizard. (Assert the shell's
     // New Chat affordance, NOT the absence of "Welcome to Rational" — that copy
     // is also the zero-state EmptyStateView headline.)
-    XCTAssertTrue(relaunched.buttons["chats.newButton"].waitForExistence(timeout: 5),
+    XCTAssertTrue(relaunched.menuButtons["chats.newButton"].waitForExistence(timeout: 5),
                   "relaunch did not reach the main shell; app tree: \(relaunched.debugDescription)")
 
     selectPersistedChat(titled: Self.chatPrompt, in: relaunched)
@@ -137,7 +137,7 @@ final class S7_FirstLaunchWizardPackagedModelDownloadGUITests: XCTestCase {
                   "helper did not register (PIE_TEST_LOGIN_ITEM_STATUS faked)")
 
     app.buttons["Open Rational"].click()
-    XCTAssertTrue(app.buttons["chats.newButton"].waitForExistence(timeout: 5),
+    XCTAssertTrue(app.menuButtons["chats.newButton"].waitForExistence(timeout: 5),
                   "main shell did not appear after onboarding; app tree: \(app.debugDescription)")
   }
 
